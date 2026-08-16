@@ -42,6 +42,7 @@
   function init() {
     console.log('[Deputy App] Initializing...');
     loadSettings();
+    applyDatePreset('this-month'); // Default to current month dynamically
     bindEvents();
     updateModalLinks();
     setupBookmarklet();
@@ -53,6 +54,9 @@
     const bookmarkBtn = $('bookmarklet-btn');
     if (!bookmarkBtn) return;
 
+    const now = new Date();
+    const curYearMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+
     const bookmarkletCode = `javascript:(async function(){
       try {
         if (!window.location.host.includes('deputy.com')) {
@@ -60,9 +64,26 @@
           return;
         }
         
+        var defaultMonth = "${curYearMonth}";
+        var userMonth = prompt("Enter Month to export (YYYY-MM):", defaultMonth);
+        if (!userMonth) return;
+        
+        var parts = userMonth.split("-");
+        var y = parseInt(parts[0], 10);
+        var m = parseInt(parts[1], 10);
+        if (isNaN(y) || isNaN(m) || m < 1 || m > 12) {
+          alert("Invalid month format. Please use YYYY-MM (e.g. 2026-08)");
+          return;
+        }
+        
+        var lastDay = new Date(y, m, 0).getDate();
+        var pad = function(n){ return String(n).padStart(2, '0'); };
+        var start = y + "-" + pad(m) + "-01T00:00:00+01:00";
+        var end = y + "-" + pad(m) + "-" + pad(lastDay) + "T23:59:59+01:00";
+        
         var banner = document.createElement('div');
         banner.style = 'position:fixed;top:20px;right:20px;z-index:999999;background:#065f46;color:#ffffff;padding:16px 22px;border-radius:12px;box-shadow:0 10px 25px rgba(0,0,0,0.35);font-family:sans-serif;font-size:14px;border:2px solid #34d399;';
-        banner.innerHTML = '<strong>⏳ Deputy Exporter:</strong> Fetching schedule for July 2026...';
+        banner.innerHTML = '<strong>⏳ Deputy Exporter:</strong> Fetching schedule for ' + userMonth + '...';
         document.body.appendChild(banner);
         
         var meData = null;
@@ -71,8 +92,6 @@
           if (meResp.ok) meData = await meResp.json();
         } catch(e) {}
         
-        var start = '2026-07-01T00:00:00+01:00';
-        var end = '2026-07-31T23:59:59+01:00';
         var payload = {
           data: { start: start, end: end, locationIds: [], locationMode: 'ALL', expandMetadata: true }
         };
@@ -86,9 +105,9 @@
         if (!shiftsResp.ok) throw new Error('HTTP ' + shiftsResp.status + ' fetching shifts');
         var shiftsData = await shiftsResp.json();
         
-        banner.innerHTML = '<strong>✅ Schedule retrieved!</strong> Opening Excel Viewer...';
+        banner.innerHTML = '<strong>✅ ' + userMonth + ' Schedule retrieved!</strong> Opening Excel Viewer...';
         
-        var fullPayload = { me: meData, shifts: shiftsData };
+        var fullPayload = { me: meData, shifts: shiftsData, queryStart: start, queryEnd: end };
         var jsonStr = JSON.stringify(fullPayload);
         
         var viewerUrl = 'https://aravinds257.github.io/deputy-schedule-watcher/#import=' + encodeURIComponent(jsonStr);
@@ -103,9 +122,8 @@
     bookmarkBtn.setAttribute('href', bookmarkletCode);
   }
 
-  // --- Auto-Import from URL Hash or PostMessage ---
+  // --- Auto-Import from URL Hash (and clean hash to prevent persistence) ---
   function checkUrlHashData() {
-    // 1. Check Hash
     if (window.location.hash && window.location.hash.includes('import=')) {
       try {
         const rawParam = window.location.hash.split('import=')[1];
@@ -120,9 +138,19 @@
             setConnectionStatus(true);
           }
           
+          if (data.queryStart && data.queryEnd) {
+            if ($('start-date')) $('start-date').value = data.queryStart.slice(0, 16);
+            if ($('end-date')) $('end-date').value = data.queryEnd.slice(0, 16);
+          }
+
           if (data.shifts) {
             processAndRenderResponse(data.shifts);
-            showToast('1-Click Schedule imported from Deputy! Ready to export Excel.', 'success');
+            showToast('Schedule imported from Deputy! Ready to export Excel.', 'success');
+          }
+
+          // Crucial: Clear hash from address bar so page refresh does not re-import old data!
+          if (window.history && window.history.replaceState) {
+            window.history.replaceState(null, '', window.location.pathname + window.location.search);
           }
         }
       } catch (e) {
@@ -130,7 +158,7 @@
       }
     }
 
-    // 2. Listen for window messages
+    // Also listen for postMessage
     window.addEventListener('message', (event) => {
       if (event.data && event.data.type === 'DEPUTY_IMPORTED_DATA' && event.data.payload) {
         const p = event.data.payload;
@@ -138,6 +166,10 @@
           state.currentUser = p.me;
           displayUserProfile(p.me);
           setConnectionStatus(true);
+        }
+        if (p.queryStart && p.queryEnd) {
+          if ($('start-date')) $('start-date').value = p.queryStart.slice(0, 16);
+          if ($('end-date')) $('end-date').value = p.queryEnd.slice(0, 16);
         }
         if (p.shifts) {
           processAndRenderResponse(p.shifts);
@@ -663,6 +695,8 @@
         }
       }
 
+      console.log('[Deputy Shifts Search Payload]', payload);
+
       const responseData = await callDeputyApi('/api/schedule/v2/me/shifts:search', {
         method: 'POST',
         body: JSON.stringify(payload)
@@ -1077,7 +1111,7 @@
             <div class="empty-state">
               <div class="empty-icon">🔍</div>
               <h3>${totalRaw > 0 ? 'No shifts match current filter' : 'No schedule data loaded'}</h3>
-              <p>${totalRaw > 0 ? 'Try changing the "Filter by Employee" dropdown to "All Shifts".' : 'Click the 1-Click Bookmarklet above on your Deputy tab or enter your Bearer token.'}</p>
+              <p>${totalRaw > 0 ? 'Try changing the "Filter by Employee" dropdown to "All Shifts".' : 'Click "Fetch Schedules from Deputy" or use the 1-Click Bookmarklet above.'}</p>
             </div>
           </td>
         </tr>

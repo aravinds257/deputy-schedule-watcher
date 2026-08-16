@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css?v=3.0">
+  <link rel="stylesheet" href="./styles.css?v=3.1">
   <!-- SheetJS for client-side Excel (.xlsx) creation and parsing -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
@@ -54,7 +54,7 @@
         <div class="easy-banner-icon">🚀</div>
         <div class="easy-banner-text">
           <h3>Easiest 1-Click Method (No Password / No DevTools Needed!)</h3>
-          <p>Drag the button below to your browser <strong>Bookmarks Bar</strong>. Then open your Deputy tab and click the bookmark anytime to view and export your schedule to Excel instantly.</p>
+          <p>Drag the button below to your browser <strong>Bookmarks Bar</strong>. Then open your Deputy tab and click the bookmark to export any month (prompts for month, defaults to current month).</p>
         </div>
       </div>
       <div class="easy-banner-action">
@@ -131,7 +131,7 @@
                 <li>Make sure your browser's Bookmarks bar is visible (Press <kbd>Ctrl+Shift+B</kbd> or <kbd>Cmd+Shift+B</kbd>).</li>
                 <li>Drag the green <strong>"📅 Export Deputy Schedule"</strong> button from the top banner directly onto your Bookmarks bar.</li>
                 <li>Go to your open Deputy tab: <br><code>https://a2c28219075424.uk.deputy.com</code></li>
-                <li>Click the bookmark! It will securely read your active schedule and load it here automatically.</li>
+                <li>Click the bookmark! It prompts for the month (e.g. 2026-08 or 2026-07) and loads your schedule here automatically.</li>
               </ol>
             </div>
 
@@ -204,20 +204,20 @@
           <div class="card-body">
             <!-- Presets -->
             <div class="preset-buttons">
-              <button type="button" class="btn-chip active" data-preset="target-july2026">July 2026</button>
-              <button type="button" class="btn-chip" data-preset="this-month">This Month</button>
+              <button type="button" class="btn-chip active" data-preset="this-month">This Month</button>
               <button type="button" class="btn-chip" data-preset="next-month">Next Month</button>
               <button type="button" class="btn-chip" data-preset="last-month">Last Month</button>
+              <button type="button" class="btn-chip" data-preset="target-july2026">July 2026</button>
             </div>
 
             <div class="date-inputs-grid">
               <div class="form-group">
                 <label for="start-date">Start Date & Time</label>
-                <input type="datetime-local" id="start-date" value="2026-07-01T00:00" required>
+                <input type="datetime-local" id="start-date" required>
               </div>
               <div class="form-group">
                 <label for="end-date">End Date & Time</label>
-                <input type="datetime-local" id="end-date" value="2026-07-31T23:59" required>
+                <input type="datetime-local" id="end-date" required>
               </div>
             </div>
 
@@ -240,7 +240,7 @@
               <summary>Paste Deputy JSON directly</summary>
               <div class="manual-json-content">
                 <p>If network restrictions prevent direct requests, paste your Deputy API JSON response here:</p>
-                <textarea id="manual-json-input" rows="4" placeholder='{"data": [{"id": 53892, "start": "2026-07-09T08:00:00+01:00", "end": "2026-07-09T22:00:00+01:00", ...}]}'></textarea>
+                <textarea id="manual-json-input" rows="4" placeholder='{"data": [{"id": 53892, "start": "2026-08-01T08:00:00+01:00", ...}]}'></textarea>
                 <button type="button" id="btn-import-json" onclick="window.importJsonClick()" class="btn btn-secondary btn-sm">Parse &amp; Display JSON</button>
               </div>
             </details>
@@ -336,7 +336,7 @@
                     <div class="empty-state">
                       <div class="empty-icon">📅</div>
                       <h3>No schedule data loaded</h3>
-                      <p>Use the 1-Click Bookmarklet above or click <strong>Load Demo Data</strong> to test the Excel exporter.</p>
+                      <p>Select date range and click <strong>Fetch Schedules</strong>, or use the 1-Click Bookmarklet.</p>
                     </div>
                   </td>
                 </tr>
@@ -369,7 +369,7 @@
             <div class="step-num">1</div>
             <div class="step-text">
               <strong>1-Click Bookmarklet (Recommended for Everyone)</strong>
-              <p>Drag the green <strong>"📅 Export Deputy Schedule"</strong> button on top to your browser bookmarks bar. When on Deputy, click it once to load your schedule!</p>
+              <p>Drag the green <strong>"📅 Export Deputy Schedule"</strong> button on top to your browser bookmarks bar. When on Deputy, click it once to prompt for the month and export your schedule!</p>
             </div>
           </div>
           <div class="guide-step">
@@ -382,8 +382,8 @@
           <div class="guide-step">
             <div class="step-num">3</div>
             <div class="step-text">
-              <strong>Paste JSON Fallback</strong>
-              <p>You can also paste raw JSON from Deputy directly into the <strong>"Paste Deputy JSON directly"</strong> box below the search range.</p>
+              <strong>Custom Date Range Selection</strong>
+              <p>You can choose <strong>This Month</strong>, <strong>Next Month</strong>, <strong>Last Month</strong>, or any custom date range in the search card.</p>
             </div>
           </div>
         </div>
@@ -397,6 +397,6 @@
     <div id="toast" class="toast" style="display:none;"></div>
   </div>
 
-  <script src="./app.js?v=3.0"></script>
+  <script src="./app.js?v=3.1"></script>
 </body>
 </html>

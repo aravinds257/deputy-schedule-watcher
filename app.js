@@ -35,77 +35,12 @@
     isDemo: false
   };
 
-  // --- DOM Elements ---
-  const elements = {
-    // Auth Tabs & Forms
-    tabBtnLogin: document.getElementById('tab-btn-login'),
-    tabBtnToken: document.getElementById('tab-btn-token'),
-    tabBtnSession: document.getElementById('tab-btn-session'),
-    loginAuthForm: document.getElementById('login-auth-form'),
-    tokenAuthForm: document.getElementById('token-auth-form'),
-    sessionHelperView: document.getElementById('session-helper-view'),
-
-    // Login Form Inputs
-    loginInstance: document.getElementById('login-instance'),
-    loginEmail: document.getElementById('login-email'),
-    loginPassword: document.getElementById('login-password'),
-    btnToggleLoginPass: document.getElementById('btn-toggle-login-pass'),
-    btnDoLogin: document.getElementById('btn-do-login'),
-
-    // Token Form Inputs
-    deputyInstance: document.getElementById('deputy-instance'),
-    bearerToken: document.getElementById('bearer-token'),
-    btnToggleTokenVisibility: document.getElementById('btn-toggle-token-visibility'),
-    btnTestConnection: document.getElementById('btn-test-connection'),
-
-    // Proxy & Status
-    corsProxyToggle: document.getElementById('cors-proxy-toggle'),
-    customProxyWrap: document.getElementById('custom-proxy-wrap'),
-    customProxyUrl: document.getElementById('custom-proxy-url'),
-    connectionStatusPill: document.getElementById('connection-status-pill'),
-    userProfileCard: document.getElementById('user-profile-card'),
-    userAvatarInitials: document.getElementById('user-avatar-initials'),
-    userDisplayName: document.getElementById('user-display-name'),
-    userMemberId: document.getElementById('user-member-id'),
-    userEmailMeta: document.getElementById('user-email-meta'),
-
-    // Date & Schedule Controls
-    startDate: document.getElementById('start-date'),
-    endDate: document.getElementById('end-date'),
-    presetButtons: document.querySelectorAll('.btn-chip'),
-    memberFilterSelect: document.getElementById('member-filter-select'),
-    btnFetchShifts: document.getElementById('btn-fetch-shifts'),
-    manualJsonInput: document.getElementById('manual-json-input'),
-    btnImportJson: document.getElementById('btn-import-json'),
-
-    // Stats
-    statTotalShifts: document.getElementById('stat-total-shifts'),
-    statTotalHours: document.getElementById('stat-total-hours'),
-    statRequesterName: document.getElementById('stat-requester-name'),
-
-    // Table & Exports
-    shiftsTable: document.getElementById('shifts-table'),
-    shiftsTableBody: document.getElementById('shifts-table-body'),
-    tableSubtitle: document.getElementById('table-subtitle'),
-    tableSearch: document.getElementById('table-search'),
-    filteredCountBadge: document.getElementById('filtered-count-badge'),
-    footerTotalHours: document.getElementById('footer-total-hours'),
-    btnExportExcel: document.getElementById('btn-export-excel'),
-    btnExportCsv: document.getElementById('btn-export-csv'),
-
-    // Modals & Navigation
-    btnTokenGuide: document.getElementById('btn-token-guide'),
-    linkHowToken: document.getElementById('link-how-token'),
-    modalTokenGuide: document.getElementById('modal-token-guide'),
-    btnCloseTokenModal: document.getElementById('btn-close-token-modal'),
-    btnUnderstandToken: document.getElementById('btn-understand-token'),
-    modalDevLink: document.getElementById('modal-dev-link'),
-    btnDemoMode: document.getElementById('btn-demo-mode'),
-    toast: document.getElementById('toast')
-  };
+  // --- Helper to safely get element ---
+  const $ = (id) => document.getElementById(id);
 
   // --- Initialization ---
   function init() {
+    console.log('[Deputy App] Initializing...');
     loadSettings();
     bindEvents();
     updateModalLinks();
@@ -113,195 +48,231 @@
 
   // --- Settings & Persistence ---
   function loadSettings() {
-    const savedInstance = localStorage.getItem(STORAGE_KEYS.INSTANCE);
-    if (savedInstance) {
-      state.instance = savedInstance;
-      elements.deputyInstance.value = savedInstance;
-      elements.loginInstance.value = savedInstance;
-    }
-
-    const savedEmail = localStorage.getItem(STORAGE_KEYS.EMAIL);
-    if (savedEmail) {
-      elements.loginEmail.value = savedEmail;
-    }
-
-    const savedToken = localStorage.getItem(STORAGE_KEYS.TOKEN);
-    if (savedToken) {
-      state.token = savedToken;
-      elements.bearerToken.value = savedToken;
-    }
-
-    const savedProxy = localStorage.getItem(STORAGE_KEYS.CORS_PROXY);
-    if (savedProxy !== null) {
-      state.useProxy = savedProxy === 'true';
-      elements.corsProxyToggle.checked = state.useProxy;
-    }
-
-    const savedCustomProxy = localStorage.getItem(STORAGE_KEYS.CUSTOM_PROXY);
-    if (savedCustomProxy) {
-      state.proxyUrl = savedCustomProxy;
-      elements.customProxyUrl.value = savedCustomProxy;
-    }
-
-    const savedProfile = localStorage.getItem(STORAGE_KEYS.PROFILE);
-    if (savedProfile) {
-      try {
-        state.currentUser = JSON.parse(savedProfile);
-        displayUserProfile(state.currentUser);
-        setConnectionStatus(true);
-      } catch (e) {
-        console.warn('Failed to parse cached profile', e);
+    try {
+      const savedInstance = localStorage.getItem(STORAGE_KEYS.INSTANCE);
+      if (savedInstance) {
+        state.instance = savedInstance;
+        if ($('deputy-instance')) $('deputy-instance').value = savedInstance;
+        if ($('login-instance')) $('login-instance').value = savedInstance;
       }
+
+      const savedEmail = localStorage.getItem(STORAGE_KEYS.EMAIL);
+      if (savedEmail && $('login-email')) {
+        $('login-email').value = savedEmail;
+      }
+
+      const savedToken = localStorage.getItem(STORAGE_KEYS.TOKEN);
+      if (savedToken) {
+        state.token = savedToken;
+        if ($('bearer-token')) $('bearer-token').value = savedToken;
+      }
+
+      const savedProxy = localStorage.getItem(STORAGE_KEYS.CORS_PROXY);
+      if (savedProxy !== null) {
+        state.useProxy = savedProxy === 'true';
+        if ($('cors-proxy-toggle')) $('cors-proxy-toggle').checked = state.useProxy;
+      }
+
+      const savedCustomProxy = localStorage.getItem(STORAGE_KEYS.CUSTOM_PROXY);
+      if (savedCustomProxy && $('custom-proxy-url')) {
+        state.proxyUrl = savedCustomProxy;
+        $('custom-proxy-url').value = savedCustomProxy;
+      }
+
+      const savedProfile = localStorage.getItem(STORAGE_KEYS.PROFILE);
+      if (savedProfile) {
+        try {
+          state.currentUser = JSON.parse(savedProfile);
+          displayUserProfile(state.currentUser);
+          setConnectionStatus(true);
+        } catch (e) {
+          console.warn('Failed to parse cached profile', e);
+        }
+      }
+    } catch (err) {
+      console.warn('LocalStorage error:', err);
     }
   }
 
   function saveSettings() {
-    const inst = (elements.loginInstance.value || elements.deputyInstance.value || '').trim();
-    localStorage.setItem(STORAGE_KEYS.INSTANCE, inst);
-    localStorage.setItem(STORAGE_KEYS.EMAIL, elements.loginEmail.value.trim());
-    localStorage.setItem(STORAGE_KEYS.TOKEN, elements.bearerToken.value.trim());
-    localStorage.setItem(STORAGE_KEYS.CORS_PROXY, elements.corsProxyToggle.checked);
-    localStorage.setItem(STORAGE_KEYS.CUSTOM_PROXY, elements.customProxyUrl.value.trim());
+    try {
+      const inst = (($('login-instance')?.value || $('deputy-instance')?.value) || state.instance).trim();
+      localStorage.setItem(STORAGE_KEYS.INSTANCE, inst);
+      if ($('login-email')) localStorage.setItem(STORAGE_KEYS.EMAIL, $('login-email').value.trim());
+      if ($('bearer-token')) localStorage.setItem(STORAGE_KEYS.TOKEN, $('bearer-token').value.trim());
+      if ($('cors-proxy-toggle')) localStorage.setItem(STORAGE_KEYS.CORS_PROXY, $('cors-proxy-toggle').checked);
+      if ($('custom-proxy-url')) localStorage.setItem(STORAGE_KEYS.CUSTOM_PROXY, $('custom-proxy-url').value.trim());
+    } catch (e) {
+      console.warn('Error saving settings:', e);
+    }
   }
 
   // --- UI Event Handlers ---
   function bindEvents() {
-    // Auth Tab Switching
-    elements.tabBtnLogin.addEventListener('click', () => switchAuthTab('login'));
-    elements.tabBtnToken.addEventListener('click', () => switchAuthTab('token'));
-    elements.tabBtnSession.addEventListener('click', () => switchAuthTab('session'));
+    const loginInst = $('login-instance');
+    const depInst = $('deputy-instance');
+    const emailInput = $('login-email');
+    const tokenInput = $('bearer-token');
+    const proxyToggle = $('cors-proxy-toggle');
+    const searchInput = $('table-search');
+    const memberSelect = $('member-filter-select');
 
-    // Sync instance inputs
-    elements.loginInstance.addEventListener('input', () => {
-      elements.deputyInstance.value = elements.loginInstance.value;
-      state.instance = elements.loginInstance.value.trim();
-      saveSettings();
-      updateModalLinks();
-    });
+    if (loginInst) {
+      loginInst.addEventListener('input', () => {
+        if (depInst) depInst.value = loginInst.value;
+        state.instance = loginInst.value.trim();
+        saveSettings();
+        updateModalLinks();
+      });
+    }
 
-    elements.deputyInstance.addEventListener('input', () => {
-      elements.loginInstance.value = elements.deputyInstance.value;
-      state.instance = elements.deputyInstance.value.trim();
-      saveSettings();
-      updateModalLinks();
-    });
+    if (depInst) {
+      depInst.addEventListener('input', () => {
+        if (loginInst) loginInst.value = depInst.value;
+        state.instance = depInst.value.trim();
+        saveSettings();
+        updateModalLinks();
+      });
+    }
 
-    elements.loginEmail.addEventListener('input', saveSettings);
+    if (emailInput) emailInput.addEventListener('input', saveSettings);
+    if (tokenInput) {
+      tokenInput.addEventListener('input', () => {
+        state.token = tokenInput.value.trim();
+        saveSettings();
+      });
+    }
 
-    elements.bearerToken.addEventListener('input', () => {
-      state.token = elements.bearerToken.value.trim();
-      saveSettings();
-    });
+    if (proxyToggle) {
+      proxyToggle.addEventListener('change', () => {
+        state.useProxy = proxyToggle.checked;
+        saveSettings();
+      });
+    }
 
-    elements.corsProxyToggle.addEventListener('change', () => {
-      state.useProxy = elements.corsProxyToggle.checked;
-      saveSettings();
-    });
+    if (searchInput) searchInput.addEventListener('input', () => applyTableFilters());
+    if (memberSelect) memberSelect.addEventListener('change', () => applyTableFilters());
 
-    // Password visibility toggles
-    elements.btnToggleLoginPass.addEventListener('click', () => {
-      const isPass = elements.loginPassword.type === 'password';
-      elements.loginPassword.type = isPass ? 'text' : 'password';
-      elements.btnToggleLoginPass.style.color = isPass ? 'var(--brand-primary)' : 'var(--text-tertiary)';
-    });
-
-    elements.btnToggleTokenVisibility.addEventListener('click', () => {
-      const isPass = elements.bearerToken.type === 'password';
-      elements.bearerToken.type = isPass ? 'text' : 'password';
-      elements.btnToggleTokenVisibility.style.color = isPass ? 'var(--brand-primary)' : 'var(--text-tertiary)';
-    });
-
-    // Login Action
-    elements.btnDoLogin.addEventListener('click', () => handleDeputyLogin());
-
-    // Test Connection Button
-    elements.btnTestConnection.addEventListener('click', () => testConnection());
-
-    // Fetch Shifts Button
-    elements.btnFetchShifts.addEventListener('click', () => fetchShiftsFromApi());
-
-    // Import JSON Manual
-    elements.btnImportJson.addEventListener('click', () => handleManualJsonImport());
-
-    // Demo Mode Button
-    elements.btnDemoMode.addEventListener('click', () => loadDemoData());
-
-    // Export Buttons
-    elements.btnExportExcel.addEventListener('click', () => exportToExcel());
-    elements.btnExportCsv.addEventListener('click', () => exportToCsv());
-
-    // Filters & Search
-    elements.tableSearch.addEventListener('input', () => applyTableFilters());
-    elements.memberFilterSelect.addEventListener('change', () => applyTableFilters());
-
-    // Date Presets
-    elements.presetButtons.forEach(btn => {
+    document.querySelectorAll('.btn-chip').forEach(btn => {
       btn.addEventListener('click', () => {
-        elements.presetButtons.forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.btn-chip').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         applyDatePreset(btn.dataset.preset);
       });
     });
 
-    // Table Header Sorting
-    elements.shiftsTable.querySelectorAll('th[data-sort]').forEach(th => {
-      th.addEventListener('click', () => {
-        const col = th.dataset.sort;
-        if (state.sortColumn === col) {
-          state.sortAsc = !state.sortAsc;
-        } else {
-          state.sortColumn = col;
-          state.sortAsc = true;
-        }
-        sortAndRenderShifts();
-      });
-    });
-
-    // Modal
-    const openModal = () => elements.modalTokenGuide.style.display = 'flex';
-    const closeModal = () => elements.modalTokenGuide.style.display = 'none';
-
-    elements.btnTokenGuide.addEventListener('click', openModal);
-    if (elements.linkHowToken) {
-      elements.linkHowToken.addEventListener('click', (e) => {
-        e.preventDefault();
-        openModal();
+    const table = $('shifts-table');
+    if (table) {
+      table.querySelectorAll('th[data-sort]').forEach(th => {
+        th.addEventListener('click', () => {
+          const col = th.dataset.sort;
+          if (state.sortColumn === col) {
+            state.sortAsc = !state.sortAsc;
+          } else {
+            state.sortColumn = col;
+            state.sortAsc = true;
+          }
+          sortAndRenderShifts();
+        });
       });
     }
-    elements.btnCloseTokenModal.addEventListener('click', closeModal);
-    elements.btnUnderstandToken.addEventListener('click', closeModal);
-    elements.modalTokenGuide.addEventListener('click', (e) => {
-      if (e.target === elements.modalTokenGuide) closeModal();
-    });
   }
 
-  function switchAuthTab(tab) {
-    elements.tabBtnLogin.classList.toggle('active', tab === 'login');
-    elements.tabBtnToken.classList.toggle('active', tab === 'token');
-    elements.tabBtnSession.classList.toggle('active', tab === 'session');
+  // --- Exposed Window Functions (Guaranteed Button Triggers) ---
+  window.switchAuthTab = function(tab) {
+    const tabLogin = $('tab-btn-login');
+    const tabToken = $('tab-btn-token');
+    const tabSession = $('tab-btn-session');
 
-    elements.loginAuthForm.style.display = tab === 'login' ? 'flex' : 'none';
-    elements.tokenAuthForm.style.display = tab === 'token' ? 'flex' : 'none';
-    elements.sessionHelperView.style.display = tab === 'session' ? 'block' : 'none';
-  }
+    const formLogin = $('login-auth-form');
+    const formToken = $('token-auth-form');
+    const viewSession = $('session-helper-view');
+
+    if (tabLogin) tabLogin.classList.toggle('active', tab === 'login');
+    if (tabToken) tabToken.classList.toggle('active', tab === 'token');
+    if (tabSession) tabSession.classList.toggle('active', tab === 'session');
+
+    if (formLogin) formLogin.style.display = tab === 'login' ? 'flex' : 'none';
+    if (formToken) formToken.style.display = tab === 'token' ? 'flex' : 'none';
+    if (viewSession) viewSession.style.display = tab === 'session' ? 'block' : 'none';
+  };
+
+  window.toggleLoginPassword = function() {
+    const input = $('login-password');
+    const iconBtn = $('btn-toggle-login-pass');
+    if (!input) return;
+    const isPass = input.type === 'password';
+    input.type = isPass ? 'text' : 'password';
+    if (iconBtn) iconBtn.style.color = isPass ? 'var(--brand-primary)' : 'var(--text-tertiary)';
+  };
+
+  window.toggleTokenPassword = function() {
+    const input = $('bearer-token');
+    const iconBtn = $('btn-toggle-token-visibility');
+    if (!input) return;
+    const isPass = input.type === 'password';
+    input.type = isPass ? 'text' : 'password';
+    if (iconBtn) iconBtn.style.color = isPass ? 'var(--brand-primary)' : 'var(--text-tertiary)';
+  };
+
+  window.openTokenModal = function() {
+    if ($('modal-token-guide')) $('modal-token-guide').style.display = 'flex';
+  };
+
+  window.closeTokenModal = function() {
+    if ($('modal-token-guide')) $('modal-token-guide').style.display = 'none';
+  };
+
+  window.handleDeputyLoginClick = function() {
+    handleDeputyLogin();
+  };
+
+  window.testConnectionClick = function() {
+    testConnection();
+  };
+
+  window.fetchShiftsClick = function() {
+    fetchShiftsFromApi();
+  };
+
+  window.importJsonClick = function() {
+    handleManualJsonImport();
+  };
+
+  window.loadDemoClick = function() {
+    loadDemoData();
+  };
+
+  window.exportExcelClick = function() {
+    exportToExcel();
+  };
+
+  window.exportCsvClick = function() {
+    exportToCsv();
+  };
 
   function updateModalLinks() {
-    const rawInstance = cleanInstanceUrl(elements.deputyInstance.value || 'a2c28219075424.uk.deputy.com');
-    elements.modalDevLink.textContent = `https://${rawInstance}/exec/devapp/oauth_clients`;
+    const rawInstance = cleanInstanceUrl($('deputy-instance')?.value || $('login-instance')?.value || 'a2c28219075424.uk.deputy.com');
+    if ($('modal-dev-link')) {
+      $('modal-dev-link').textContent = `https://${rawInstance}/exec/devapp/oauth_clients`;
+    }
   }
 
   function cleanInstanceUrl(input) {
+    if (!input) return 'a2c28219075424.uk.deputy.com';
     return input.replace(/^https?:\/\//i, '').replace(/\/+$/, '').trim();
   }
 
   // --- Toast Notifications ---
   function showToast(message, type = 'info') {
-    elements.toast.className = `toast toast-${type}`;
-    elements.toast.innerHTML = `<span>${message}</span>`;
-    elements.toast.style.display = 'flex';
+    const toast = $('toast');
+    if (!toast) return;
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `<span>${message}</span>`;
+    toast.style.display = 'flex';
 
     setTimeout(() => {
-      elements.toast.style.display = 'none';
+      toast.style.display = 'none';
     }, 4500);
   }
 
@@ -336,27 +307,28 @@
     }
 
     if (start && end) {
-      elements.startDate.value = start;
-      elements.endDate.value = end;
+      if ($('start-date')) $('start-date').value = start;
+      if ($('end-date')) $('end-date').value = end;
     }
   }
 
   // --- API Client Layer ---
   function buildApiUrl(targetFullUrl) {
-    if (elements.corsProxyToggle.checked) {
-      const proxyBase = elements.customProxyUrl.value.trim() || DEFAULT_PROXY;
+    const isProxy = $('cors-proxy-toggle') ? $('cors-proxy-toggle').checked : state.useProxy;
+    if (isProxy) {
+      const proxyBase = ($('custom-proxy-url')?.value || '').trim() || DEFAULT_PROXY;
       return `${proxyBase}${encodeURIComponent(targetFullUrl)}`;
     }
     return targetFullUrl;
   }
 
   function getBaseInstanceUrl() {
-    const raw = elements.loginInstance.value || elements.deputyInstance.value || state.instance;
+    const raw = $('login-instance')?.value || $('deputy-instance')?.value || state.instance;
     return `https://${cleanInstanceUrl(raw)}`;
   }
 
   async function callDeputyApi(endpointPath, options = {}) {
-    const token = elements.bearerToken.value.trim();
+    const token = ($('bearer-token')?.value || state.token || '').trim();
     if (!token) {
       throw new Error('Please enter or fetch your Deputy Bearer Token first.');
     }
@@ -370,6 +342,8 @@
 
     const targetUrl = `${getBaseInstanceUrl()}${endpointPath}`;
     const url = buildApiUrl(targetUrl);
+
+    console.log('[Deputy API Request]', url);
 
     const response = await fetch(url, {
       ...options,
@@ -392,25 +366,28 @@
 
   // --- Deputy Login Handler (Email & Password) ---
   async function handleDeputyLogin() {
-    const username = elements.loginEmail.value.trim();
-    const password = elements.loginPassword.value;
-    const instance = cleanInstanceUrl(elements.loginInstance.value.trim() || state.instance);
+    const username = ($('login-email')?.value || '').trim();
+    const password = $('login-password')?.value || '';
+    const instance = cleanInstanceUrl($('login-instance')?.value || state.instance);
+
+    console.log('[Deputy Login] Starting login for:', username, 'on instance:', instance);
 
     if (!username || !password) {
       showToast('Please enter your Deputy email and password.', 'error');
       return;
     }
 
-    const origText = elements.btnDoLogin.innerHTML;
-    elements.btnDoLogin.disabled = true;
-    elements.btnDoLogin.innerHTML = 'Signing in to Deputy...';
+    const btn = $('btn-do-login');
+    const origText = btn ? btn.innerHTML : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = 'Connecting to Deputy...';
+    }
 
     try {
       saveSettings();
 
-      // Candidate login endpoints to test
-      const loginAttempts = [
-        // 1. Deputy Once API JSON login
+      const candidateEndpoints = [
         {
           url: 'https://once.deputy.com/api/v1/auth/login',
           options: {
@@ -419,7 +396,6 @@
             body: JSON.stringify({ username, password })
           }
         },
-        // 2. Deputy Instance Auth login
         {
           url: `https://${instance}/api/v1/auth/login`,
           options: {
@@ -428,7 +404,6 @@
             body: JSON.stringify({ username, password })
           }
         },
-        // 3. Deputy Instance Form-encoded login
         {
           url: `https://${instance}/exec/login`,
           options: {
@@ -440,15 +415,16 @@
       ];
 
       let foundToken = null;
-      let lastError = null;
 
-      for (const attempt of loginAttempts) {
+      for (const attempt of candidateEndpoints) {
         try {
           const proxiedUrl = buildApiUrl(attempt.url);
+          console.log('[Deputy Login Attempt]', proxiedUrl);
           const resp = await fetch(proxiedUrl, attempt.options);
           
           if (resp.ok) {
             const data = await resp.json().catch(() => null);
+            console.log('[Deputy Login Response]', data);
             if (data) {
               foundToken = data.access_token ||
                            data.token ||
@@ -460,40 +436,42 @@
             }
           }
         } catch (e) {
-          lastError = e;
+          console.warn('[Deputy Login Attempt Error]', e);
         }
       }
 
       if (foundToken) {
         state.token = foundToken;
-        elements.bearerToken.value = foundToken;
+        if ($('bearer-token')) $('bearer-token').value = foundToken;
         saveSettings();
-        showToast('Login successful! Token acquired.', 'success');
+        showToast('Login successful! Bearer token retrieved.', 'success');
 
-        // Test Profile
         await testConnection();
       } else {
-        // Direct login endpoints might require interactive MFA or browser session cookie
         throw new Error(
-          'Deputy requires browser session or MFA. You can quickly copy your Bearer Token directly from your logged-in Deputy tab (see "Active Browser Tab" tab).'
+          'Direct login returned no token. Please copy your active Bearer token from the "Browser Tab Helper" tab.'
         );
       }
     } catch (err) {
-      console.error('Login attempt failed:', err);
+      console.error('Login process error:', err);
       showToast(err.message, 'error');
-      // Switch to session helper tab to assist user
-      switchAuthTab('session');
+      window.switchAuthTab('session');
     } finally {
-      elements.btnDoLogin.disabled = false;
-      elements.btnDoLogin.innerHTML = origText;
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origText;
+      }
     }
   }
 
   // --- Connection & Profile Testing ---
   async function testConnection() {
-    const originalText = elements.btnTestConnection.innerHTML;
-    elements.btnTestConnection.disabled = true;
-    elements.btnTestConnection.innerHTML = 'Connecting to Deputy...';
+    const btn = $('btn-test-connection');
+    const originalText = btn ? btn.innerHTML : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = 'Connecting to Deputy...';
+    }
 
     try {
       const userProfile = await callDeputyApi('/api/v1/me');
@@ -514,8 +492,10 @@
       setConnectionStatus(false);
       showToast(err.message, 'error');
     } finally {
-      elements.btnTestConnection.disabled = false;
-      elements.btnTestConnection.innerHTML = originalText;
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+      }
     }
   }
 
@@ -531,38 +511,46 @@
 
   function displayUserProfile(user) {
     if (!user) return;
-    elements.userProfileCard.style.display = 'flex';
+    const card = $('user-profile-card');
+    if (card) card.style.display = 'flex';
     const name = getDisplayName(user);
-    elements.userDisplayName.textContent = name;
-    elements.statRequesterName.textContent = name;
+    if ($('user-display-name')) $('user-display-name').textContent = name;
+    if ($('stat-requester-name')) $('stat-requester-name').textContent = name;
 
     const initials = name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'U';
-    elements.userAvatarInitials.textContent = initials;
+    if ($('user-avatar-initials')) $('user-avatar-initials').textContent = initials;
 
     const id = user.Employee || user.EmployeeId || user.Id || user.id || user.memberId || '--';
-    elements.userMemberId.textContent = id;
-    elements.userEmailMeta.innerHTML = `Employee/Member ID: <strong>${id}</strong> &bull; ${user.Email || user.email || 'No email'}`;
+    if ($('user-member-id')) $('user-member-id').textContent = id;
+    if ($('user-email-meta')) {
+      $('user-email-meta').innerHTML = `Employee/Member ID: <strong>${id}</strong> &bull; ${user.Email || user.email || 'No email'}`;
+    }
   }
 
   function setConnectionStatus(connected) {
+    const pill = $('connection-status-pill');
+    if (!pill) return;
     if (connected) {
-      elements.connectionStatusPill.className = 'status-pill status-connected';
-      elements.connectionStatusPill.textContent = 'Connected';
+      pill.className = 'status-pill status-connected';
+      pill.textContent = 'Connected';
     } else {
-      elements.connectionStatusPill.className = 'status-pill status-disconnected';
-      elements.connectionStatusPill.textContent = 'Disconnected';
+      pill.className = 'status-pill status-disconnected';
+      pill.textContent = 'Disconnected';
     }
   }
 
   // --- Shift Fetching & Payload Construction ---
   async function fetchShiftsFromApi() {
-    const originalText = elements.btnFetchShifts.innerHTML;
-    elements.btnFetchShifts.disabled = true;
-    elements.btnFetchShifts.innerHTML = 'Fetching shifts...';
+    const btn = $('btn-fetch-shifts');
+    const originalText = btn ? btn.innerHTML : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = 'Fetching shifts...';
+    }
 
     try {
-      const startInput = elements.startDate.value;
-      const endInput = elements.endDate.value;
+      const startInput = $('start-date')?.value;
+      const endInput = $('end-date')?.value;
 
       if (!startInput || !endInput) {
         throw new Error('Please select both start and end dates.');
@@ -604,8 +592,10 @@
       console.error('Fetch shifts failed:', err);
       showToast(err.message, 'error');
     } finally {
-      elements.btnFetchShifts.disabled = false;
-      elements.btnFetchShifts.innerHTML = originalText;
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+      }
     }
   }
 
@@ -626,7 +616,7 @@
 
   // --- Manual JSON Import ---
   function handleManualJsonImport() {
-    const raw = elements.manualJsonInput.value.trim();
+    const raw = ($('manual-json-input')?.value || '').trim();
     if (!raw) {
       showToast('Please paste valid JSON data into the text box.', 'error');
       return;
@@ -866,7 +856,10 @@
   }
 
   function populateMemberFilterDropdown() {
-    const currentVal = elements.memberFilterSelect.value;
+    const memberSelect = $('member-filter-select');
+    if (!memberSelect) return;
+
+    const currentVal = memberSelect.value;
     const uniqueMembers = new Map();
 
     state.shifts.forEach(s => {
@@ -886,17 +879,17 @@
       optionsHtml += `<option value="${id}">${name} (ID: ${id} - ${shiftCount} shifts)</option>`;
     });
 
-    elements.memberFilterSelect.innerHTML = optionsHtml;
+    memberSelect.innerHTML = optionsHtml;
     
-    if (currentVal && Array.from(elements.memberFilterSelect.options).some(o => o.value === currentVal)) {
-      elements.memberFilterSelect.value = currentVal;
+    if (currentVal && Array.from(memberSelect.options).some(o => o.value === currentVal)) {
+      memberSelect.value = currentVal;
     }
   }
 
   // --- Filtering & Sorting ---
   function applyTableFilters() {
-    const searchTerm = elements.tableSearch.value.toLowerCase().trim();
-    const memberFilter = elements.memberFilterSelect.value;
+    const searchTerm = ($('table-search')?.value || '').toLowerCase().trim();
+    const memberFilter = $('member-filter-select')?.value || 'auto';
 
     const currentUserKeys = [];
     if (state.currentUser) {
@@ -983,8 +976,15 @@
 
   // --- Render Table & Summary Cards ---
   function renderTable() {
-    const tbody = elements.shiftsTableBody;
+    const tbody = $('shifts-table-body');
+    if (!tbody) return;
+
     tbody.innerHTML = '';
+
+    const btnExcel = $('btn-export-excel');
+    const btnCsv = $('btn-export-csv');
+    const countBadge = $('filtered-count-badge');
+    const footHours = $('footer-total-hours');
 
     if (state.filteredShifts.length === 0) {
       const totalRaw = state.shifts.length;
@@ -999,16 +999,16 @@
           </td>
         </tr>
       `;
-      elements.btnExportExcel.disabled = true;
-      elements.btnExportCsv.disabled = true;
-      elements.filteredCountBadge.textContent = '0 shifts';
-      elements.footerTotalHours.textContent = '0.00 hrs';
+      if (btnExcel) btnExcel.disabled = true;
+      if (btnCsv) btnCsv.disabled = true;
+      if (countBadge) countBadge.textContent = '0 shifts';
+      if (footHours) footHours.textContent = '0.00 hrs';
       return;
     }
 
-    elements.btnExportExcel.disabled = false;
-    elements.btnExportCsv.disabled = false;
-    elements.filteredCountBadge.textContent = `${state.filteredShifts.length} shift${state.filteredShifts.length === 1 ? '' : 's'}`;
+    if (btnExcel) btnExcel.disabled = false;
+    if (btnCsv) btnCsv.disabled = false;
+    if (countBadge) countBadge.textContent = `${state.filteredShifts.length} shift${state.filteredShifts.length === 1 ? '' : 's'}`;
 
     state.filteredShifts.forEach(s => {
       const tr = document.createElement('tr');
@@ -1032,25 +1032,27 @@
       tbody.appendChild(tr);
     });
 
-    const startRange = elements.startDate.value ? elements.startDate.value.split('T')[0] : '';
-    const endRange = elements.endDate.value ? elements.endDate.value.split('T')[0] : '';
-    elements.tableSubtitle.textContent = `Displaying ${state.filteredShifts.length} shifts between ${startRange} and ${endRange}`;
+    const startRange = $('start-date')?.value ? $('start-date').value.split('T')[0] : '';
+    const endRange = $('end-date')?.value ? $('end-date').value.split('T')[0] : '';
+    if ($('table-subtitle')) {
+      $('table-subtitle').textContent = `Displaying ${state.filteredShifts.length} shifts between ${startRange} and ${endRange}`;
+    }
   }
 
   function updateStats() {
     const count = state.filteredShifts.length;
     const totalHours = state.filteredShifts.reduce((acc, s) => acc + s.totalHours, 0);
 
-    elements.statTotalShifts.textContent = count;
-    elements.statTotalHours.textContent = `${totalHours.toFixed(2)} hrs`;
-    elements.footerTotalHours.textContent = `${totalHours.toFixed(2)} hrs`;
+    if ($('stat-total-shifts')) $('stat-total-shifts').textContent = count;
+    if ($('stat-total-hours')) $('stat-total-hours').textContent = `${totalHours.toFixed(2)} hrs`;
+    if ($('footer-total-hours')) $('footer-total-hours').textContent = `${totalHours.toFixed(2)} hrs`;
 
     if (state.currentUser) {
-      elements.statRequesterName.textContent = getDisplayName(state.currentUser);
+      if ($('stat-requester-name')) $('stat-requester-name').textContent = getDisplayName(state.currentUser);
     } else if (state.filteredShifts.length > 0) {
-      elements.statRequesterName.textContent = state.filteredShifts[0].memberName;
+      if ($('stat-requester-name')) $('stat-requester-name').textContent = state.filteredShifts[0].memberName;
     } else {
-      elements.statRequesterName.textContent = 'Not loaded';
+      if ($('stat-requester-name')) $('stat-requester-name').textContent = 'Not loaded';
     }
   }
 
@@ -1130,8 +1132,8 @@
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Schedule');
 
       const requester = (state.currentUser ? getDisplayName(state.currentUser) : (state.filteredShifts[0]?.memberName || 'Deputy_Schedule')).replace(/[^a-zA-Z0-9_-]/g, '_');
-      const startStr = elements.startDate.value.split('T')[0] || 'start';
-      const endStr = elements.endDate.value.split('T')[0] || 'end';
+      const startStr = $('start-date')?.value ? $('start-date').value.split('T')[0] : 'start';
+      const endStr = $('end-date')?.value ? $('end-date').value.split('T')[0] : 'end';
       const filename = `${requester}_Schedule_${startStr}_to_${endStr}.xlsx`;
 
       XLSX.writeFile(workbook, filename);

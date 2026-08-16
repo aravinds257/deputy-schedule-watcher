@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deputy Schedule & Excel Exporter</title>
+  <meta name="description" content="Fetch your personal schedules directly from Deputy API, resolve member info, and view or export your shifts to formatted Excel (.xlsx) files. Ready for GitHub Pages.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+  <!-- SheetJS for client-side Excel (.xlsx) creation and parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand-section">
+        <div class="logo-badge">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="3" ry="3"></rect>
+            <line x1="16" y1="2" x2="16" y2="6"></line>
+            <line x1="8" y1="2" x2="8" y2="6"></line>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+            <path d="M8 14h.01"></path>
+            <path d="M12 14h.01"></path>
+            <path d="M16 14h.01"></path>
+            <path d="M8 18h.01"></path>
+            <path d="M12 18h.01"></path>
+            <path d="M16 18h.01"></path>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title">Deputy Schedule Exporter</h1>
+          <p class="brand-subtitle">Fetch personal shifts, view your schedule, and export formatted Excel sheets</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="btn-token-guide" class="btn btn-secondary" title="How to get your Bearer Token">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          Token Guide
+        </button>
+        <button id="btn-demo-mode" class="btn btn-ghost" title="Load sample shifts to test UI">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+          Load Demo Data
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Grid -->
+    <main class="main-grid">
+      <!-- Left Column: Controls & Configuration -->
+      <section class="config-panel">
+        <!-- Deputy Connection Card -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+              Deputy Authentication
+            </h2>
+            <span id="connection-status-pill" class="status-pill status-disconnected">Disconnected</span>
+          </div>
+          <div class="card-body">
+            <form id="auth-form">
+              <div class="form-group">
+                <label for="deputy-instance">Deputy Instance Subdomain / URL</label>
+                <div class="input-with-hint">
+                  <input type="text" id="deputy-instance" placeholder="a2c28219075424.uk.deputy.com" value="a2c28219075424.uk.deputy.com" required autocomplete="off">
+                </div>
+                <span class="field-hint">e.g. <code>your-company.deputy.com</code> or <code>a2c28219075424.uk.deputy.com</code></span>
+              </div>
+
+              <div class="form-group">
+                <label for="bearer-token">
+                  Bearer Token (Permanent API Token)
+                  <a href="#token-guide" id="link-how-token" class="label-link">How to get?</a>
+                </label>
+                <div class="password-input-wrap">
+                  <input type="password" id="bearer-token" placeholder="Paste your Deputy Bearer / Permanent Token" required autocomplete="current-password">
+                  <button type="button" id="btn-toggle-token-visibility" class="btn-icon" aria-label="Toggle token visibility">
+                    <svg id="eye-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                  </button>
+                </div>
+                <span class="field-hint">Stored safely in your browser's <code>localStorage</code> (never sent to third parties).</span>
+              </div>
+
+              <!-- CORS Proxy Toggle for GitHub Pages -->
+              <div class="form-group cors-box">
+                <div class="toggle-container">
+                  <input type="checkbox" id="cors-proxy-toggle" class="toggle-checkbox" checked>
+                  <label for="cors-proxy-toggle" class="toggle-label">
+                    <span class="toggle-switch"></span>
+                    <span class="toggle-text">
+                      <strong>CORS Proxy (Recommended for GitHub Pages)</strong>
+                      <small>Bypasses browser CORS when hosted on <code>github.io</code></small>
+                    </span>
+                  </label>
+                </div>
+                <div id="custom-proxy-wrap" class="custom-proxy-wrap" style="display:none;">
+                  <input type="text" id="custom-proxy-url" placeholder="https://corsproxy.io/?" value="https://corsproxy.io/?url=">
+                </div>
+              </div>
+
+              <div class="action-row">
+                <button type="button" id="btn-test-connection" class="btn btn-secondary w-100">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                  Test Connection & Profile
+                </button>
+              </div>
+            </form>
+
+            <!-- Authenticated Member Profile Info -->
+            <div id="user-profile-card" class="user-profile-card" style="display:none;">
+              <div class="user-avatar" id="user-avatar-initials">U</div>
+              <div class="user-details">
+                <div class="user-name" id="user-display-name">Fetching Name...</div>
+                <div class="user-meta" id="user-email-meta">memberId: <span id="user-member-id">--</span></div>
+              </div>
+              <div class="user-badge" id="user-role-badge">Authenticated</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Date Range & Schedule Search Card -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+              Schedule Search Range
+            </h2>
+          </div>
+          <div class="card-body">
+            <!-- Presets -->
+            <div class="preset-buttons">
+              <button type="button" class="btn-chip active" data-preset="target-july2026">July 2026</button>
+              <button type="button" class="btn-chip" data-preset="this-month">This Month</button>
+              <button type="button" class="btn-chip" data-preset="next-month">Next Month</button>
+              <button type="button" class="btn-chip" data-preset="last-month">Last Month</button>
+            </div>
+
+            <div class="date-inputs-grid">
+              <div class="form-group">
+                <label for="start-date">Start Date & Time</label>
+                <input type="datetime-local" id="start-date" value="2026-07-01T00:00" required>
+              </div>
+              <div class="form-group">
+                <label for="end-date">End Date & Time</label>
+                <input type="datetime-local" id="end-date" value="2026-07-31T23:59" required>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="member-filter-select">Filter by Member</label>
+              <select id="member-filter-select">
+                <option value="auto">Auto (Authenticated Requester)</option>
+                <option value="all">All Returned Members</option>
+              </select>
+              <span class="field-hint">Automatically filters shift results to only show your own shifts.</span>
+            </div>
+
+            <button type="button" id="btn-fetch-shifts" class="btn btn-primary w-100 btn-large">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              Fetch Schedules from Deputy
+            </button>
+
+            <!-- Manual JSON Paste Accordion (Emergency fallback) -->
+            <details class="manual-json-details">
+              <summary>Need manual JSON paste fallback?</summary>
+              <div class="manual-json-content">
+                <p>If your browser or organization network blocks requests, paste the JSON output from Deputy here:</p>
+                <textarea id="manual-json-input" rows="4" placeholder='{"data": {"shifts": [...]}}'></textarea>
+                <button type="button" id="btn-import-json" class="btn btn-secondary btn-sm">Import JSON</button>
+              </div>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Results & Interactive Excel Viewer -->
+      <section class="results-panel">
+        <!-- Summary Metric Cards -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon icon-blue">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+            </div>
+            <div class="stat-info">
+              <span class="stat-label">Total Shifts</span>
+              <span class="stat-value" id="stat-total-shifts">0</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon icon-emerald">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            </div>
+            <div class="stat-info">
+              <span class="stat-label">Total Scheduled Hours</span>
+              <span class="stat-value" id="stat-total-hours">0.00 hrs</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon icon-amber">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+            </div>
+            <div class="stat-info">
+              <span class="stat-label">Active Schedule For</span>
+              <span class="stat-value" id="stat-requester-name">Not loaded</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Schedule & Excel View Card -->
+        <div class="card result-card">
+          <div class="card-header flex-between">
+            <div>
+              <h2 class="card-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                Schedule & Excel Sheet Preview
+              </h2>
+              <span class="table-subtitle" id="table-subtitle">Select date range and fetch shifts</span>
+            </div>
+            <div class="export-actions">
+              <button id="btn-export-excel" class="btn btn-success" disabled>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                Download Excel (.xlsx)
+              </button>
+              <button id="btn-export-csv" class="btn btn-secondary" disabled>
+                Export CSV
+              </button>
+            </div>
+          </div>
+
+          <!-- Table Search / Quick Filter Toolbar -->
+          <div class="table-toolbar">
+            <div class="search-input-wrap">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input type="text" id="table-search" placeholder="Search shifts, roles, locations, or notes...">
+            </div>
+            <div class="view-mode-toggles">
+              <span class="filter-count" id="filtered-count-badge">0 shifts</span>
+            </div>
+          </div>
+
+          <!-- Spreadsheet View Table -->
+          <div class="table-container" id="table-scroll-container">
+            <table class="excel-table" id="shifts-table">
+              <thead>
+                <tr>
+                  <th data-sort="date">Date & Day</th>
+                  <th data-sort="member">Member Name</th>
+                  <th data-sort="start">Start Time</th>
+                  <th data-sort="end">End Time</th>
+                  <th data-sort="hours">Total Hours</th>
+                  <th data-sort="break">Meal Break</th>
+                  <th data-sort="role">Role / Position</th>
+                  <th data-sort="location">Location / Area</th>
+                  <th data-sort="status">Status</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody id="shifts-table-body">
+                <tr class="empty-state-row">
+                  <td colspan="10">
+                    <div class="empty-state">
+                      <div class="empty-icon">📅</div>
+                      <h3>No schedule data loaded</h3>
+                      <p>Enter your Deputy token & instance details, or click <strong>Load Demo Data</strong> to test the Excel exporter.</p>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Table Footer Summary -->
+          <div class="table-footer" id="table-footer">
+            <div class="footer-left">
+              <span>Ready for GitHub Pages &amp; Deputy V2 Shifts API</span>
+            </div>
+            <div class="footer-right">
+              <span>Total Hours: <strong id="footer-total-hours">0.00</strong></span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Modal: Token Guide -->
+    <div id="modal-token-guide" class="modal-overlay" style="display:none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>How to Obtain Your Deputy Bearer / Permanent Token</h3>
+          <button type="button" class="btn-modal-close" id="btn-close-token-modal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="guide-step">
+            <div class="step-num">1</div>
+            <div class="step-text">
+              <strong>Log in to your Deputy account</strong>
+              <p>Log in with your Deputy email and password at your organization's URL (e.g. <code>https://a2c28219075424.uk.deputy.com</code>).</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="step-num">2</div>
+            <div class="step-text">
+              <strong>Open Developer / API Access Page</strong>
+              <p>Navigate directly in your browser to: <br>
+                <code id="modal-dev-link">https://a2c28219075424.uk.deputy.com/exec/devapp/oauth_clients</code>
+              </p>
+              <p><small>(Or navigate via Deputy <strong>Profile Menu &rarr; Account Settings &rarr; Developer Tools / API</strong>)</small></p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="step-num">3</div>
+            <div class="step-text">
+              <strong>Generate / Copy Permanent Bearer Token</strong>
+              <p>Click on <strong>"Get an access token"</strong> or <strong>"Permanent Token"</strong>. Copy the long token string and paste it into this app.</p>
+            </div>
+          </div>
+          <div class="guide-alert">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            <div>
+              <strong>Security Notice:</strong> The token is saved strictly in your local browser storage. It allows fetching only your authorized shifts and schedule data.
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-primary" id="btn-understand-token">Got it!</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast" style="display:none;"></div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

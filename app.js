@@ -44,6 +44,107 @@
     loadSettings();
     bindEvents();
     updateModalLinks();
+    setupBookmarklet();
+    checkUrlHashData();
+  }
+
+  // --- 1-Click Bookmarklet Setup ---
+  function setupBookmarklet() {
+    const bookmarkBtn = $('bookmarklet-btn');
+    if (!bookmarkBtn) return;
+
+    const bookmarkletCode = `javascript:(async function(){
+      try {
+        if (!window.location.host.includes('deputy.com')) {
+          alert('Please click this bookmark while on your Deputy tab (e.g. a2c28219075424.uk.deputy.com)');
+          return;
+        }
+        
+        var banner = document.createElement('div');
+        banner.style = 'position:fixed;top:20px;right:20px;z-index:999999;background:#065f46;color:#ffffff;padding:16px 22px;border-radius:12px;box-shadow:0 10px 25px rgba(0,0,0,0.35);font-family:sans-serif;font-size:14px;border:2px solid #34d399;';
+        banner.innerHTML = '<strong>⏳ Deputy Exporter:</strong> Fetching schedule for July 2026...';
+        document.body.appendChild(banner);
+        
+        var meData = null;
+        try {
+          var meResp = await fetch('/api/v1/me');
+          if (meResp.ok) meData = await meResp.json();
+        } catch(e) {}
+        
+        var start = '2026-07-01T00:00:00+01:00';
+        var end = '2026-07-31T23:59:59+01:00';
+        var payload = {
+          data: { start: start, end: end, locationIds: [], locationMode: 'ALL', expandMetadata: true }
+        };
+        
+        var shiftsResp = await fetch('/api/schedule/v2/me/shifts:search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        
+        if (!shiftsResp.ok) throw new Error('HTTP ' + shiftsResp.status + ' fetching shifts');
+        var shiftsData = await shiftsResp.json();
+        
+        banner.innerHTML = '<strong>✅ Schedule retrieved!</strong> Opening Excel Viewer...';
+        
+        var fullPayload = { me: meData, shifts: shiftsData };
+        var jsonStr = JSON.stringify(fullPayload);
+        
+        var viewerUrl = 'https://aravinds257.github.io/deputy-schedule-watcher/#import=' + encodeURIComponent(jsonStr);
+        var win = window.open(viewerUrl, '_blank');
+        
+        setTimeout(function(){ banner.remove(); }, 2000);
+      } catch(err) {
+        alert('Deputy Exporter Error: ' + err.message);
+      }
+    })();`.replace(/\s+/g, ' ');
+
+    bookmarkBtn.setAttribute('href', bookmarkletCode);
+  }
+
+  // --- Auto-Import from URL Hash or PostMessage ---
+  function checkUrlHashData() {
+    // 1. Check Hash
+    if (window.location.hash && window.location.hash.includes('import=')) {
+      try {
+        const rawParam = window.location.hash.split('import=')[1];
+        if (rawParam) {
+          const decoded = decodeURIComponent(rawParam);
+          const data = JSON.parse(decoded);
+          console.log('[Deputy App] Auto-imported data from bookmarklet hash:', data);
+          
+          if (data.me) {
+            state.currentUser = data.me;
+            displayUserProfile(data.me);
+            setConnectionStatus(true);
+          }
+          
+          if (data.shifts) {
+            processAndRenderResponse(data.shifts);
+            showToast('1-Click Schedule imported from Deputy! Ready to export Excel.', 'success');
+          }
+        }
+      } catch (e) {
+        console.warn('Hash import error:', e);
+      }
+    }
+
+    // 2. Listen for window messages
+    window.addEventListener('message', (event) => {
+      if (event.data && event.data.type === 'DEPUTY_IMPORTED_DATA' && event.data.payload) {
+        const p = event.data.payload;
+        if (p.me) {
+          state.currentUser = p.me;
+          displayUserProfile(p.me);
+          setConnectionStatus(true);
+        }
+        if (p.shifts) {
+          processAndRenderResponse(p.shifts);
+          showToast('Schedule loaded via 1-Click Bookmarklet!', 'success');
+        }
+      }
+    });
   }
 
   // --- Settings & Persistence ---
@@ -96,7 +197,7 @@
 
   function saveSettings() {
     try {
-      const inst = (($('login-instance')?.value || $('deputy-instance')?.value) || state.instance).trim();
+      const inst = (($('deputy-instance')?.value || $('login-instance')?.value) || state.instance).trim();
       localStorage.setItem(STORAGE_KEYS.INSTANCE, inst);
       if ($('login-email')) localStorage.setItem(STORAGE_KEYS.EMAIL, $('login-email').value.trim());
       if ($('bearer-token')) localStorage.setItem(STORAGE_KEYS.TOKEN, $('bearer-token').value.trim());
@@ -178,7 +279,7 @@
     }
   }
 
-  // --- Exposed Window Functions (Guaranteed Button Triggers) ---
+  // --- Exposed Window Functions ---
   window.switchAuthTab = function(tab) {
     const tabLogin = $('tab-btn-login');
     const tabToken = $('tab-btn-token');
@@ -323,14 +424,14 @@
   }
 
   function getBaseInstanceUrl() {
-    const raw = $('login-instance')?.value || $('deputy-instance')?.value || state.instance;
+    const raw = $('deputy-instance')?.value || $('login-instance')?.value || state.instance;
     return `https://${cleanInstanceUrl(raw)}`;
   }
 
   async function callDeputyApi(endpointPath, options = {}) {
     const token = ($('bearer-token')?.value || state.token || '').trim();
     if (!token) {
-      throw new Error('Please enter or fetch your Deputy Bearer Token first.');
+      throw new Error('Please enter your Deputy Bearer Token first or use the 1-Click Bookmarklet above.');
     }
 
     const headers = {
@@ -364,13 +465,11 @@
     return await response.json();
   }
 
-  // --- Deputy Login Handler (Email & Password) ---
+  // --- Deputy Direct Login (Fallback) ---
   async function handleDeputyLogin() {
     const username = ($('login-email')?.value || '').trim();
     const password = $('login-password')?.value || '';
     const instance = cleanInstanceUrl($('login-instance')?.value || state.instance);
-
-    console.log('[Deputy Login] Starting login for:', username, 'on instance:', instance);
 
     if (!username || !password) {
       showToast('Please enter your Deputy email and password.', 'error');
@@ -403,14 +502,6 @@
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify({ username, password })
           }
-        },
-        {
-          url: `https://${instance}/exec/login`,
-          options: {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
-            body: new URLSearchParams({ username, password, login_instance: instance }).toString()
-          }
         }
       ];
 
@@ -419,24 +510,19 @@
       for (const attempt of candidateEndpoints) {
         try {
           const proxiedUrl = buildApiUrl(attempt.url);
-          console.log('[Deputy Login Attempt]', proxiedUrl);
           const resp = await fetch(proxiedUrl, attempt.options);
-          
           if (resp.ok) {
             const data = await resp.json().catch(() => null);
-            console.log('[Deputy Login Response]', data);
             if (data) {
               foundToken = data.access_token ||
                            data.token ||
                            data.dp_token ||
-                           (data.data && (data.data.access_token || data.data.token)) ||
-                           (data.result && (data.result.token || data.result.access_token));
-              
+                           (data.data && (data.data.access_token || data.data.token));
               if (foundToken) break;
             }
           }
         } catch (e) {
-          console.warn('[Deputy Login Attempt Error]', e);
+          console.warn('Login attempt error:', e);
         }
       }
 
@@ -445,17 +531,14 @@
         if ($('bearer-token')) $('bearer-token').value = foundToken;
         saveSettings();
         showToast('Login successful! Bearer token retrieved.', 'success');
-
         await testConnection();
       } else {
-        throw new Error(
-          'Direct login returned no token. Please copy your active Bearer token from the "Browser Tab Helper" tab.'
-        );
+        throw new Error('Deputy requires MFA/session cookie. Please use the 1-Click Bookmarklet button at the top!');
       }
     } catch (err) {
       console.error('Login process error:', err);
       showToast(err.message, 'error');
-      window.switchAuthTab('session');
+      window.switchAuthTab('token');
     } finally {
       if (btn) {
         btn.disabled = false;
@@ -994,7 +1077,7 @@
             <div class="empty-state">
               <div class="empty-icon">🔍</div>
               <h3>${totalRaw > 0 ? 'No shifts match current filter' : 'No schedule data loaded'}</h3>
-              <p>${totalRaw > 0 ? 'Try changing the "Filter by Employee" dropdown to "All Shifts" or adjusting your search term.' : 'Sign in or enter token, then click "Fetch Schedules from Deputy".'}</p>
+              <p>${totalRaw > 0 ? 'Try changing the "Filter by Employee" dropdown to "All Shifts".' : 'Click the 1-Click Bookmarklet above on your Deputy tab or enter your Bearer token.'}</p>
             </div>
           </td>
         </tr>

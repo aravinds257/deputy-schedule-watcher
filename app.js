@@ -140,7 +140,6 @@
 
   // --- UI Event Handlers ---
   function bindEvents() {
-    // Inputs change
     elements.deputyInstance.addEventListener('input', () => {
       state.instance = elements.deputyInstance.value.trim();
       saveSettings();
@@ -157,36 +156,21 @@
       saveSettings();
     });
 
-    // Password visibility toggle
     elements.btnToggleTokenVisibility.addEventListener('click', () => {
       const isPassword = elements.bearerToken.type === 'password';
       elements.bearerToken.type = isPassword ? 'text' : 'password';
       elements.btnToggleTokenVisibility.style.color = isPassword ? 'var(--brand-primary)' : 'var(--text-tertiary)';
     });
 
-    // Test Connection Button
     elements.btnTestConnection.addEventListener('click', () => testConnection());
-
-    // Fetch Shifts Button
     elements.btnFetchShifts.addEventListener('click', () => fetchShiftsFromApi());
-
-    // Import JSON Manual
     elements.btnImportJson.addEventListener('click', () => handleManualJsonImport());
-
-    // Demo Mode Button
     elements.btnDemoMode.addEventListener('click', () => loadDemoData());
-
-    // Export Buttons
     elements.btnExportExcel.addEventListener('click', () => exportToExcel());
     elements.btnExportCsv.addEventListener('click', () => exportToCsv());
-
-    // Table Search Filter
     elements.tableSearch.addEventListener('input', () => applyTableFilters());
-
-    // Member filter dropdown
     elements.memberFilterSelect.addEventListener('change', () => applyTableFilters());
 
-    // Date Presets
     elements.presetButtons.forEach(btn => {
       btn.addEventListener('click', () => {
         elements.presetButtons.forEach(b => b.classList.remove('active'));
@@ -195,7 +179,6 @@
       });
     });
 
-    // Table Headers Sorting
     elements.shiftsTable.querySelectorAll('th[data-sort]').forEach(th => {
       th.addEventListener('click', () => {
         const col = th.dataset.sort;
@@ -209,7 +192,6 @@
       });
     });
 
-    // Modal Events
     const openModal = () => elements.modalTokenGuide.style.display = 'flex';
     const closeModal = () => elements.modalTokenGuide.style.display = 'none';
 
@@ -335,7 +317,6 @@
     elements.btnTestConnection.innerHTML = 'Connecting to Deputy...';
 
     try {
-      // Endpoint /api/v1/me returns the logged-in user's profile
       const userProfile = await callDeputyApi('/api/v1/me');
       state.currentUser = userProfile;
       state.isDemo = false;
@@ -344,6 +325,12 @@
       displayUserProfile(userProfile);
       setConnectionStatus(true);
       showToast(`Connected as ${getDisplayName(userProfile)}`, 'success');
+
+      // Re-filter shifts if already loaded
+      if (state.shifts.length > 0) {
+        populateMemberFilterDropdown();
+        applyTableFilters();
+      }
     } catch (err) {
       console.error('Connection test failed:', err);
       setConnectionStatus(false);
@@ -356,7 +343,12 @@
 
   function getDisplayName(user) {
     if (!user) return 'User';
-    return user.DisplayName || `${user.FirstName || ''} ${user.LastName || ''}`.trim() || user.Name || `Member #${user.Id}`;
+    return user.DisplayName ||
+           user.displayName ||
+           `${user.FirstName || user.firstName || ''} ${user.LastName || user.lastName || ''}`.trim() ||
+           user.Name ||
+           user.name ||
+           (user.Employee ? `Employee #${user.Employee}` : `Member #${user.Id || user.id}`);
   }
 
   function displayUserProfile(user) {
@@ -369,15 +361,9 @@
     const initials = name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'U';
     elements.userAvatarInitials.textContent = initials;
 
-    const id = user.Id || user.EmployeeId || user.id || '--';
+    const id = user.Employee || user.EmployeeId || user.Id || user.id || user.memberId || '--';
     elements.userMemberId.textContent = id;
-    elements.userEmailMeta.innerHTML = `memberId: <strong>${id}</strong> &bull; ${user.Email || 'No email'}`;
-
-    // Update filter options
-    elements.memberFilterSelect.innerHTML = `
-      <option value="auto">Auto (${name})</option>
-      <option value="all">All Returned Members</option>
-    `;
+    elements.userEmailMeta.innerHTML = `Employee/Member ID: <strong>${id}</strong> &bull; ${user.Email || user.email || 'No email'}`;
   }
 
   function setConnectionStatus(connected) {
@@ -397,7 +383,6 @@
     elements.btnFetchShifts.innerHTML = 'Fetching shifts...';
 
     try {
-      // Construct Date Range in ISO-8601 with Timezone Offset
       const startInput = elements.startDate.value;
       const endInput = elements.endDate.value;
 
@@ -408,7 +393,6 @@
       const startDateObj = new Date(startInput);
       const endDateObj = new Date(endInput);
 
-      // Deputy Payload Format matching user prompt
       const payload = {
         data: {
           start: formatDateToIsoWithTz(startDateObj),
@@ -419,15 +403,15 @@
         }
       };
 
-      // 1. Ensure we have profile to resolve requester name if not already cached
+      // 1. Ensure profile is retrieved to know requester's Employee ID & Name
       if (!state.currentUser) {
         try {
           const profile = await callDeputyApi('/api/v1/me');
           state.currentUser = profile;
           displayUserProfile(profile);
           setConnectionStatus(true);
-        } catch (_) {
-          console.warn('Could not auto-fetch profile prior to shift search.');
+        } catch (profileErr) {
+          console.warn('Auto profile fetch warning:', profileErr);
         }
       }
 
@@ -476,7 +460,7 @@
       const parsed = JSON.parse(raw);
       state.isDemo = false;
       processAndRenderResponse(parsed);
-      showToast('JSON imported successfully!', 'success');
+      showToast('JSON imported and processed successfully!', 'success');
     } catch (e) {
       showToast('Invalid JSON structure: ' + e.message, 'error');
     }
@@ -489,36 +473,70 @@
     state.locationsMap.clear();
     state.rolesMap.clear();
 
-    // Extract metadata if returned
+    // Extract metadata if available
     const metadata = data.metadata || (data.data && data.data.metadata) || {};
-    if (metadata.members || metadata.employees || metadata.users) {
-      const memberList = metadata.members || metadata.employees || metadata.users || [];
-      memberList.forEach(m => {
-        const id = String(m.id || m.Id || m.memberId);
-        const name = m.displayName || m.DisplayName || `${m.firstName || m.FirstName || ''} ${m.lastName || m.LastName || ''}`.trim();
-        if (id && name) state.membersMap.set(id, name);
-      });
-    }
+    
+    // Member / Employee metadata mapping
+    const memberSources = [
+      metadata.employees,
+      metadata.members,
+      metadata.rosterMembers,
+      metadata.roster_members,
+      metadata.users,
+      metadata.staff
+    ];
 
-    if (metadata.locations || metadata.operationalUnits) {
-      const locList = metadata.locations || metadata.operationalUnits || [];
-      locList.forEach(l => {
-        const id = String(l.id || l.Id);
-        const name = l.name || l.operationalUnitName || l.locationName;
-        if (id && name) state.locationsMap.set(id, name);
-      });
-    }
+    memberSources.forEach(list => {
+      if (Array.isArray(list)) {
+        list.forEach(m => {
+          const id = String(m.id ?? m.Id ?? m.employee ?? m.memberId ?? m.userId ?? '');
+          const name = m.displayName ?? m.DisplayName ?? m.name ?? `${m.firstName || m.FirstName || ''} ${m.lastName || m.LastName || ''}`.trim();
+          if (id && name) {
+            state.membersMap.set(id, name);
+          }
+        });
+      }
+    });
 
-    if (metadata.roles || metadata.positions) {
-      const roleList = metadata.roles || metadata.positions || [];
-      roleList.forEach(r => {
-        const id = String(r.id || r.Id);
-        const name = r.name || r.roleName || r.positionName;
-        if (id && name) state.rolesMap.set(id, name);
-      });
-    }
+    // Locations / Operational Units metadata
+    const locationSources = [
+      metadata.locations,
+      metadata.operationalUnits,
+      metadata.companies
+    ];
 
-    // Extract raw shifts array
+    locationSources.forEach(list => {
+      if (Array.isArray(list)) {
+        list.forEach(l => {
+          const id = String(l.id ?? l.Id ?? '');
+          const name = l.name ?? l.operationalUnitName ?? l.locationName ?? l.strUnitName ?? '';
+          if (id && name) {
+            state.locationsMap.set(id, name);
+          }
+        });
+      }
+    });
+
+    // Areas / Roles metadata
+    const roleSources = [
+      metadata.areas,
+      metadata.roles,
+      metadata.positions
+    ];
+
+    roleSources.forEach(list => {
+      if (Array.isArray(list)) {
+        list.forEach(r => {
+          const id = String(r.id ?? r.Id ?? '');
+          const name = r.name ?? r.areaName ?? r.roleName ?? r.positionName ?? '';
+          if (id && name) {
+            state.rolesMap.set(id, name);
+          }
+        });
+      }
+    });
+
+    // Extract raw shifts array (handling all Deputy API response wrappers)
     let rawShifts = [];
     if (Array.isArray(data)) {
       rawShifts = data;
@@ -530,18 +548,24 @@
       rawShifts = data.data;
     } else if (data.response && Array.isArray(data.response)) {
       rawShifts = data.response;
+    } else if (data.id && data.start && data.end) {
+      // Single shift object passed
+      rawShifts = [data];
     }
 
-    // If current user is known, map their ID
+    // If current authenticated user is known, ensure their ID is mapped
     if (state.currentUser) {
-      const uid = String(state.currentUser.Id || state.currentUser.id || state.currentUser.EmployeeId);
-      state.membersMap.set(uid, getDisplayName(state.currentUser));
+      ['Id', 'id', 'Employee', 'employee', 'EmployeeId', 'employeeId', 'UserId', 'userId'].forEach(key => {
+        if (state.currentUser[key]) {
+          state.membersMap.set(String(state.currentUser[key]), getDisplayName(state.currentUser));
+        }
+      });
     }
 
     // Normalize each shift
     state.shifts = rawShifts.map(s => normalizeShift(s));
 
-    // Populate dropdown with unique members
+    // Populate dropdown with all unique employees detected
     populateMemberFilterDropdown();
 
     applyTableFilters();
@@ -549,60 +573,116 @@
 
   function normalizeShift(raw) {
     // Start & End Timestamps
-    const startStr = raw.startTime || raw.start || raw.intStart || raw.Start || raw.StartTime;
-    const endStr = raw.endTime || raw.end || raw.intEnd || raw.End || raw.EndTime;
+    const startStr = raw.start || raw.startTime || raw.intStart || raw.Start || raw.StartTime;
+    const endStr = raw.end || raw.endTime || raw.intEnd || raw.End || raw.EndTime;
 
     const startDate = parseDeputyDate(startStr);
     const endDate = parseDeputyDate(endStr);
 
-    // Member / Employee
-    const memberId = String(raw.memberId || raw.employeeId || raw.employee || raw.userId || raw.Id || '');
-    let memberName = raw.memberName || raw.employeeName || state.membersMap.get(memberId);
-    
+    // Employee / Member ID Resolution (Field is `employee` or `memberId` in Deputy API)
+    const employeeId = String(raw.employee ?? raw.memberId ?? raw.employeeId ?? raw.userId ?? raw.member ?? '');
+
+    // Note / Employee Name detection
+    const noteText = raw.note || raw.notes || raw.comment || raw.strComment || '';
+
+    let memberName = raw.memberName || raw.employeeName || state.membersMap.get(employeeId);
+
     if (!memberName) {
-      if (state.currentUser && (memberId === String(state.currentUser.Id) || !memberId)) {
-        memberName = getDisplayName(state.currentUser);
-      } else {
-        memberName = memberId ? `Member #${memberId}` : (state.currentUser ? getDisplayName(state.currentUser) : 'Me');
+      if (state.currentUser) {
+        const uids = [
+          state.currentUser.Employee,
+          state.currentUser.EmployeeId,
+          state.currentUser.Id,
+          state.currentUser.id,
+          state.currentUser.UserId
+        ].filter(Boolean).map(String);
+
+        if (uids.includes(employeeId) || !employeeId) {
+          memberName = getDisplayName(state.currentUser);
+        }
       }
     }
 
-    // Meal break in minutes
-    const mealBreakMins = Number(raw.mealbreakMinutes || raw.totalMealbreak || raw.mealbreak || raw.breakMinutes || 0);
-
-    // Calculate total hours
-    let totalHours = 0;
-    if (raw.totalHours !== undefined) {
-      totalHours = parseFloat(raw.totalHours);
-    } else if (raw.duration !== undefined) {
-      totalHours = parseFloat(raw.duration) / 3600;
-    } else if (startDate && endDate) {
-      const diffMs = endDate.getTime() - startDate.getTime();
-      totalHours = Math.max(0, (diffMs / (1000 * 60 * 60)) - (mealBreakMins / 60));
+    // If still no memberName, check note or fallback
+    if (!memberName) {
+      if (noteText && noteText.trim().length > 0 && noteText.trim().length <= 25 && !noteText.includes('\n')) {
+        // Frequently Deputy shifts assign the employee name in `note` (e.g. "PRINCE")
+        memberName = noteText.trim();
+      } else if (employeeId) {
+        memberName = `Employee #${employeeId}`;
+      } else {
+        memberName = state.currentUser ? getDisplayName(state.currentUser) : 'Requester';
+      }
     }
 
-    // Role & Location
-    const roleId = String(raw.roleId || raw.role || '');
-    const roleName = raw.roleName || raw.positionName || state.rolesMap.get(roleId) || raw.role || 'Staff';
+    // If we now have a resolved name for this employeeId, save to map
+    if (employeeId && memberName && !state.membersMap.has(employeeId)) {
+      state.membersMap.set(employeeId, memberName);
+    }
 
-    const locationId = String(raw.operationalUnitId || raw.locationId || raw.companyId || '');
-    const locationName = raw.operationalUnitName || raw.locationName || raw.companyName || state.locationsMap.get(locationId) || 'Main Site';
+    // Meal Break Duration (in minutes)
+    let mealBreakMins = 0;
+    if (raw.mealbreakDuration !== undefined && raw.mealbreakDuration !== null) {
+      mealBreakMins = Number(raw.mealbreakDuration);
+    } else if (raw.mealbreakMinutes !== undefined) {
+      mealBreakMins = Number(raw.mealbreakMinutes);
+    } else if (raw.breakMinutes !== undefined) {
+      mealBreakMins = Number(raw.breakMinutes);
+    } else if (raw.totalMealbreak !== undefined) {
+      mealBreakMins = Number(raw.totalMealbreak);
+    } else if (Array.isArray(raw.mealbreakSlots) && raw.mealbreakSlots.length > 0) {
+      mealBreakMins = raw.mealbreakSlots.reduce((sum, slot) => {
+        if (slot.duration) return sum + slot.duration;
+        if (slot.start && slot.end) {
+          return sum + (new Date(slot.end) - new Date(slot.start)) / 60000;
+        }
+        return sum;
+      }, 0);
+    }
 
-    // Status
-    const rawStatus = raw.status || raw.publishStatus || raw.approvalState || 'Confirmed';
+    // Total Hours Calculation
+    let totalHours = 0;
+    if (startDate && endDate) {
+      const diffMs = endDate.getTime() - startDate.getTime();
+      const diffHours = diffMs / (1000 * 60 * 60);
+      const breakHours = mealBreakMins > 0 ? (mealBreakMins / 60) : 0;
+      totalHours = Math.max(0, diffHours - breakHours);
+    } else if (raw.duration !== undefined && raw.duration !== null) {
+      const d = parseFloat(raw.duration);
+      // In Deputy V2 Shifts API, duration is in HOURS (e.g. 14).
+      // Only divide by 3600 if value is large (> 100, which means seconds).
+      totalHours = d > 100 ? (d / 3600) : d;
+    }
+
+    // Role / Area (Field in Deputy is `areaName` or `area`)
+    const areaId = String(raw.area ?? raw.roleId ?? raw.role ?? '');
+    const roleName = raw.areaName || raw.roleName || raw.positionName || state.rolesMap.get(areaId) || (areaId ? `Area #${areaId}` : 'Shift');
+
+    // Location (Field in Deputy is `locationName` or `location`)
+    const locationId = String(raw.location ?? raw.operationalUnitId ?? raw.companyId ?? '');
+    const locationName = raw.locationName || raw.operationalUnitName || raw.companyName || state.locationsMap.get(locationId) || (locationId ? `Location #${locationId}` : 'Main Site');
+
+    // Status & Confirmation
     let statusLabel = 'Confirmed';
     let statusClass = 'badge-confirmed';
 
-    if (typeof rawStatus === 'string') {
-      if (rawStatus.toLowerCase().includes('sched') || rawStatus.toLowerCase().includes('publish')) {
-        statusLabel = 'Scheduled';
-        statusClass = 'badge-scheduled';
-      } else if (rawStatus.toLowerCase().includes('open')) {
-        statusLabel = 'Open';
-        statusClass = 'badge-open';
-      } else if (rawStatus.toLowerCase().includes('draft')) {
-        statusLabel = 'Draft';
-        statusClass = 'badge-draft';
+    if (raw.isPublished === true) {
+      statusLabel = 'Published';
+      statusClass = 'badge-confirmed';
+    }
+
+    if (raw.isOpen === true) {
+      statusLabel = 'Open';
+      statusClass = 'badge-open';
+    } else if (raw.isPublished === false) {
+      statusLabel = 'Draft';
+      statusClass = 'badge-draft';
+    }
+
+    if (raw.confirmationStatus && typeof raw.confirmationStatus === 'string') {
+      if (raw.confirmationStatus.includes('CONFIRMED')) {
+        statusLabel = 'Confirmed';
+        statusClass = 'badge-confirmed';
       }
     }
 
@@ -611,7 +691,8 @@
       id: raw.id || raw.shiftId || Math.random().toString(36).substr(2, 9),
       startDate,
       endDate,
-      memberId,
+      memberId: employeeId,
+      employeeId,
       memberName,
       roleName,
       locationName,
@@ -619,14 +700,13 @@
       totalHours: Number(totalHours.toFixed(2)),
       status: statusLabel,
       statusClass,
-      notes: raw.notes || raw.comment || raw.strComment || ''
+      notes: noteText
     };
   }
 
   function parseDeputyDate(val) {
     if (!val) return null;
     if (typeof val === 'number') {
-      // Unix timestamp (seconds or milliseconds)
       return val > 10000000000 ? new Date(val) : new Date(val * 1000);
     }
     const d = new Date(val);
@@ -638,21 +718,24 @@
     const uniqueMembers = new Map();
 
     state.shifts.forEach(s => {
-      if (s.memberId && s.memberName) {
-        uniqueMembers.set(s.memberId, s.memberName);
+      if (s.employeeId) {
+        uniqueMembers.set(s.employeeId, s.memberName);
       }
     });
 
     let optionsHtml = '';
-    const requesterName = state.currentUser ? getDisplayName(state.currentUser) : 'Authenticated Requester';
-    optionsHtml += `<option value="auto">Auto (${requesterName})</option>`;
-    optionsHtml += `<option value="all">All Members (${state.shifts.length} shifts)</option>`;
+    const requesterName = state.currentUser ? getDisplayName(state.currentUser) : 'Authenticated User';
+    
+    optionsHtml += `<option value="auto">Auto (Only My Shifts: ${requesterName})</option>`;
+    optionsHtml += `<option value="all">All Shifts (${state.shifts.length} total)</option>`;
 
     uniqueMembers.forEach((name, id) => {
-      optionsHtml += `<option value="${id}">${name} (ID: ${id})</option>`;
+      const shiftCount = state.shifts.filter(s => s.employeeId === id).length;
+      optionsHtml += `<option value="${id}">${name} (ID: ${id} - ${shiftCount} shifts)</option>`;
     });
 
     elements.memberFilterSelect.innerHTML = optionsHtml;
+    
     if (currentVal && Array.from(elements.memberFilterSelect.options).some(o => o.value === currentVal)) {
       elements.memberFilterSelect.value = currentVal;
     }
@@ -662,21 +745,45 @@
   function applyTableFilters() {
     const searchTerm = elements.tableSearch.value.toLowerCase().trim();
     const memberFilter = elements.memberFilterSelect.value;
-    const currentUserId = state.currentUser ? String(state.currentUser.Id || state.currentUser.id || '') : '';
+
+    // Collect all valid IDs and display names for current user
+    const currentUserKeys = [];
+    if (state.currentUser) {
+      ['Employee', 'EmployeeId', 'employee', 'employeeId', 'Id', 'id', 'UserId', 'userId', 'memberId'].forEach(k => {
+        if (state.currentUser[k] !== undefined && state.currentUser[k] !== null) {
+          currentUserKeys.push(String(state.currentUser[k]));
+        }
+      });
+    }
 
     state.filteredShifts = state.shifts.filter(shift => {
-      // Member Filter
+      // 1. Employee / Member Filter
       if (memberFilter === 'auto') {
-        if (currentUserId && shift.memberId && shift.memberId !== currentUserId) {
-          return false;
+        if (currentUserKeys.length > 0) {
+          const shiftEmp = String(shift.employeeId || shift.memberId || shift.raw?.employee || '');
+          const matchesId = currentUserKeys.includes(shiftEmp);
+          
+          let matchesName = false;
+          if (state.currentUser && state.currentUser.DisplayName) {
+            const uName = state.currentUser.DisplayName.toLowerCase();
+            matchesName = shift.memberName.toLowerCase().includes(uName) ||
+                          (shift.notes && shift.notes.toLowerCase().includes(uName));
+          }
+
+          if (!matchesId && !matchesName) {
+            // If shift does not match the active requester's ID or name, filter it out
+            return false;
+          }
         }
       } else if (memberFilter !== 'all') {
-        if (shift.memberId !== memberFilter) {
+        const targetId = String(memberFilter);
+        const shiftEmp = String(shift.employeeId || shift.memberId || shift.raw?.employee || '');
+        if (shiftEmp !== targetId) {
           return false;
         }
       }
 
-      // Search Term Filter
+      // 2. Search Term Filter
       if (searchTerm) {
         const matchString = `${shift.memberName} ${shift.roleName} ${shift.locationName} ${shift.status} ${shift.notes}`.toLowerCase();
         if (!matchString.includes(searchTerm)) {
@@ -732,13 +839,14 @@
     tbody.innerHTML = '';
 
     if (state.filteredShifts.length === 0) {
+      const totalRaw = state.shifts.length;
       tbody.innerHTML = `
         <tr class="empty-state-row">
           <td colspan="10">
             <div class="empty-state">
               <div class="empty-icon">🔍</div>
-              <h3>No matching shifts found</h3>
-              <p>Try adjusting your search filter or date range above.</p>
+              <h3>${totalRaw > 0 ? 'No shifts match current filter' : 'No schedule data loaded'}</h3>
+              <p>${totalRaw > 0 ? 'Try changing the "Filter by Member" dropdown to "All Shifts" or adjusting your search term.' : 'Click "Fetch Schedules from Deputy" or "Load Demo Data" to get started.'}</p>
             </div>
           </td>
         </tr>
@@ -746,7 +854,7 @@
       elements.btnExportExcel.disabled = true;
       elements.btnExportCsv.disabled = true;
       elements.filteredCountBadge.textContent = '0 shifts';
-      elements.footerTotalHours.textContent = '0.00';
+      elements.footerTotalHours.textContent = '0.00 hrs';
       return;
     }
 
@@ -763,10 +871,10 @@
 
       tr.innerHTML = `
         <td class="cell-date">${dateStr}</td>
-        <td><strong>${escapeHtml(s.memberName)}</strong></td>
+        <td><strong>${escapeHtml(s.memberName)}</strong> <small style="color:var(--text-tertiary);">#${s.employeeId}</small></td>
         <td>${startStr}</td>
         <td>${endStr}</td>
-        <td class="cell-hours">${s.totalHours.toFixed(2)}h</td>
+        <td class="cell-hours">${s.totalHours.toFixed(2)} hrs</td>
         <td>${s.mealBreakMins} min</td>
         <td>${escapeHtml(s.roleName)}</td>
         <td>${escapeHtml(s.locationName)}</td>
@@ -776,7 +884,6 @@
       tbody.appendChild(tr);
     });
 
-    // Update table header subtitle
     const startRange = elements.startDate.value ? elements.startDate.value.split('T')[0] : '';
     const endRange = elements.endDate.value ? elements.endDate.value.split('T')[0] : '';
     elements.tableSubtitle.textContent = `Displaying ${state.filteredShifts.length} shifts between ${startRange} and ${endRange}`;
@@ -822,53 +929,49 @@
     }
 
     try {
-      // 1. Prepare structured sheet rows
       const rows = state.filteredShifts.map(s => ({
         'Date': s.startDate ? s.startDate.toISOString().split('T')[0] : '',
         'Day': s.startDate ? s.startDate.toLocaleDateString(undefined, { weekday: 'long' }) : '',
-        'Member Name': s.memberName,
-        'Member ID': s.memberId,
+        'Member / Employee Name': s.memberName,
+        'Employee ID': s.employeeId,
         'Start Time': s.startDate ? s.startDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : '',
         'End Time': s.endDate ? s.endDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : '',
         'Break (Mins)': s.mealBreakMins,
         'Total Hours': s.totalHours,
-        'Role / Position': s.roleName,
-        'Location / Department': s.locationName,
+        'Area / Role': s.roleName,
+        'Location': s.locationName,
         'Status': s.status,
         'Notes': s.notes
       }));
 
-      // 2. Add summary row
       const totalHours = state.filteredShifts.reduce((sum, s) => sum + s.totalHours, 0);
       rows.push({
         'Date': 'TOTAL',
         'Day': '',
-        'Member Name': '',
-        'Member ID': '',
+        'Member / Employee Name': '',
+        'Employee ID': '',
         'Start Time': '',
         'End Time': '',
         'Break (Mins)': '',
         'Total Hours': Number(totalHours.toFixed(2)),
-        'Role / Position': '',
-        'Location / Department': '',
+        'Area / Role': '',
+        'Location': '',
         'Status': `${state.filteredShifts.length} Shifts`,
         'Notes': 'Generated via Deputy Schedule Exporter'
       });
 
-      // 3. Create worksheet & workbook
       const worksheet = XLSX.utils.json_to_sheet(rows);
 
-      // Auto-fit column widths
       const colWidths = [
         { wch: 12 }, // Date
         { wch: 12 }, // Day
-        { wch: 22 }, // Member Name
-        { wch: 12 }, // Member ID
+        { wch: 24 }, // Member Name
+        { wch: 14 }, // Employee ID
         { wch: 12 }, // Start Time
         { wch: 12 }, // End Time
         { wch: 12 }, // Break
-        { wch: 12 }, // Total Hours
-        { wch: 20 }, // Role
+        { wch: 14 }, // Total Hours
+        { wch: 20 }, // Role/Area
         { wch: 22 }, // Location
         { wch: 14 }, // Status
         { wch: 30 }  // Notes
@@ -878,13 +981,11 @@
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Schedule');
 
-      // 4. Generate dynamic filename
-      const requester = (state.currentUser ? getDisplayName(state.currentUser) : 'Deputy_Schedule').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const requester = (state.currentUser ? getDisplayName(state.currentUser) : (state.filteredShifts[0]?.memberName || 'Deputy_Schedule')).replace(/[^a-zA-Z0-9_-]/g, '_');
       const startStr = elements.startDate.value.split('T')[0] || 'start';
       const endStr = elements.endDate.value.split('T')[0] || 'end';
       const filename = `${requester}_Schedule_${startStr}_to_${endStr}.xlsx`;
 
-      // 5. Download file
       XLSX.writeFile(workbook, filename);
       showToast(`Exported ${filename} successfully!`, 'success');
     } catch (err) {
@@ -896,7 +997,7 @@
   function exportToCsv() {
     if (state.filteredShifts.length === 0) return;
 
-    const headers = ['Date', 'Day', 'Member Name', 'Member ID', 'Start Time', 'End Time', 'Break (Mins)', 'Total Hours', 'Role', 'Location', 'Status', 'Notes'];
+    const headers = ['Date', 'Day', 'Member Name', 'Employee ID', 'Start Time', 'End Time', 'Break (Mins)', 'Total Hours', 'Area / Role', 'Location', 'Status', 'Notes'];
     const csvRows = [headers.join(',')];
 
     state.filteredShifts.forEach(s => {
@@ -909,7 +1010,7 @@
         `"${dateStr}"`,
         `"${dayStr}"`,
         `"${s.memberName.replace(/"/g, '""')}"`,
-        `"${s.memberId}"`,
+        `"${s.employeeId}"`,
         `"${startStr}"`,
         `"${endStr}"`,
         s.mealBreakMins,
@@ -934,52 +1035,205 @@
   function loadDemoData() {
     state.isDemo = true;
     state.currentUser = {
-      Id: 1042,
-      DisplayName: 'Aravind S (Deputy User)',
-      FirstName: 'Aravind',
-      LastName: 'S',
-      Email: 'aravind@example.com',
+      Id: 101,
+      Employee: 101,
+      DisplayName: 'Prince (Deputy User)',
+      FirstName: 'Prince',
+      LastName: '',
+      Email: 'prince@example.com',
       Role: 'Team Member'
     };
 
     displayUserProfile(state.currentUser);
     setConnectionStatus(true);
 
-    // Realistic July 2026 Shift Schedule (UK Timezone)
+    // Realistic shifts matching the Deputy API response structure provided
     const demoPayload = {
       metadata: {
-        members: [
-          { id: 1042, displayName: 'Aravind S (Deputy User)' }
+        employees: [
+          { id: 101, displayName: 'Prince' },
+          { id: 102, displayName: 'Sarah Jenkins' }
         ],
         locations: [
-          { id: 1, name: 'London Central Hub' },
-          { id: 2, name: 'Westminster Office' }
+          { id: 8, name: 'Westfield' },
+          { id: 9, name: 'Central Hub' }
         ],
-        roles: [
-          { id: 101, name: 'Senior Specialist' },
-          { id: 102, name: 'Shift Coordinator' }
+        areas: [
+          { id: 46, name: 'Live in' },
+          { id: 47, name: 'Day Duty' }
         ]
       },
       data: {
         shifts: [
-          { id: 501, memberId: 1042, roleId: 101, operationalUnitId: 1, start: '2026-07-02T09:00:00+01:00', end: '2026-07-02T17:30:00+01:00', mealbreakMinutes: 30, status: 'Confirmed', notes: 'Main shift assignment' },
-          { id: 502, memberId: 1042, roleId: 101, operationalUnitId: 1, start: '2026-07-03T09:00:00+01:00', end: '2026-07-03T17:30:00+01:00', mealbreakMinutes: 30, status: 'Confirmed', notes: 'Standard duty' },
-          { id: 503, memberId: 1042, roleId: 102, operationalUnitId: 2, start: '2026-07-06T08:30:00+01:00', end: '2026-07-06T17:00:00+01:00', mealbreakMinutes: 30, status: 'Scheduled', notes: 'Opening coordinator' },
-          { id: 504, memberId: 1042, roleId: 101, operationalUnitId: 1, start: '2026-07-08T09:00:00+01:00', end: '2026-07-08T17:30:00+01:00', mealbreakMinutes: 30, status: 'Confirmed', notes: '' },
-          { id: 505, memberId: 1042, roleId: 101, operationalUnitId: 1, start: '2026-07-10T09:00:00+01:00', end: '2026-07-10T17:30:00+01:00', mealbreakMinutes: 30, status: 'Confirmed', notes: 'Team sprint check-in' },
-          { id: 506, memberId: 1042, roleId: 102, operationalUnitId: 2, start: '2026-07-14T09:00:00+01:00', end: '2026-07-14T17:30:00+01:00', mealbreakMinutes: 30, status: 'Confirmed', notes: '' },
-          { id: 507, memberId: 1042, roleId: 101, operationalUnitId: 1, start: '2026-07-16T10:00:00+01:00', end: '2026-07-16T18:30:00+01:00', mealbreakMinutes: 30, status: 'Confirmed', notes: 'Late afternoon coverage' },
-          { id: 508, memberId: 1042, roleId: 101, operationalUnitId: 1, start: '2026-07-20T09:00:00+01:00', end: '2026-07-20T17:30:00+01:00', mealbreakMinutes: 30, status: 'Confirmed', notes: '' },
-          { id: 509, memberId: 1042, roleId: 101, operationalUnitId: 1, start: '2026-07-22T09:00:00+01:00', end: '2026-07-22T17:30:00+01:00', mealbreakMinutes: 30, status: 'Confirmed', notes: '' },
-          { id: 510, memberId: 1042, roleId: 102, operationalUnitId: 2, start: '2026-07-27T08:30:00+01:00', end: '2026-07-27T17:00:00+01:00', mealbreakMinutes: 30, status: 'Scheduled', notes: 'Monthly schedule wrap-up' },
-          { id: 511, memberId: 1042, roleId: 101, operationalUnitId: 1, start: '2026-07-29T09:00:00+01:00', end: '2026-07-29T17:30:00+01:00', mealbreakMinutes: 30, status: 'Confirmed', notes: '' },
-          { id: 512, memberId: 1042, roleId: 101, operationalUnitId: 1, start: '2026-07-31T09:00:00+01:00', end: '2026-07-31T17:00:00+01:00', mealbreakMinutes: 30, status: 'Confirmed', notes: 'Month end handover' }
+          {
+            id: 53892,
+            start: "2026-07-09T08:00:00+01:00",
+            end: "2026-07-09T22:00:00+01:00",
+            mealbreakDuration: 0,
+            mealbreakSlots: [],
+            duration: 14,
+            cost: 0,
+            area: 46,
+            employee: 101,
+            note: "PRINCE",
+            isPublished: true,
+            isOpen: false,
+            confirmationStatus: "ROSTER_CONFIRMATION_NOT_REQUIRED",
+            areaName: "Live in",
+            location: 8,
+            locationName: "Westfield"
+          },
+          {
+            id: 53893,
+            start: "2026-07-10T08:00:00+01:00",
+            end: "2026-07-10T22:00:00+01:00",
+            mealbreakDuration: 0,
+            mealbreakSlots: [],
+            duration: 14,
+            cost: 0,
+            area: 46,
+            employee: 101,
+            note: "PRINCE",
+            isPublished: true,
+            isOpen: false,
+            confirmationStatus: "ROSTER_CONFIRMATION_NOT_REQUIRED",
+            areaName: "Live in",
+            location: 8,
+            locationName: "Westfield"
+          },
+          {
+            id: 53894,
+            start: "2026-07-13T09:00:00+01:00",
+            end: "2026-07-13T17:30:00+01:00",
+            mealbreakDuration: 30,
+            mealbreakSlots: [],
+            duration: 8,
+            cost: 0,
+            area: 47,
+            employee: 101,
+            note: "PRINCE",
+            isPublished: true,
+            isOpen: false,
+            confirmationStatus: "ROSTER_CONFIRMATION_NOT_REQUIRED",
+            areaName: "Day Duty",
+            location: 8,
+            locationName: "Westfield"
+          },
+          {
+            id: 53895,
+            start: "2026-07-15T08:00:00+01:00",
+            end: "2026-07-15T22:00:00+01:00",
+            mealbreakDuration: 0,
+            mealbreakSlots: [],
+            duration: 14,
+            cost: 0,
+            area: 46,
+            employee: 101,
+            note: "PRINCE",
+            isPublished: true,
+            isOpen: false,
+            confirmationStatus: "ROSTER_CONFIRMATION_NOT_REQUIRED",
+            areaName: "Live in",
+            location: 8,
+            locationName: "Westfield"
+          },
+          {
+            id: 53896,
+            start: "2026-07-18T08:00:00+01:00",
+            end: "2026-07-18T22:00:00+01:00",
+            mealbreakDuration: 0,
+            mealbreakSlots: [],
+            duration: 14,
+            cost: 0,
+            area: 46,
+            employee: 101,
+            note: "PRINCE",
+            isPublished: true,
+            isOpen: false,
+            confirmationStatus: "ROSTER_CONFIRMATION_NOT_REQUIRED",
+            areaName: "Live in",
+            location: 8,
+            locationName: "Westfield"
+          },
+          {
+            id: 53897,
+            start: "2026-07-22T08:00:00+01:00",
+            end: "2026-07-22T22:00:00+01:00",
+            mealbreakDuration: 0,
+            mealbreakSlots: [],
+            duration: 14,
+            cost: 0,
+            area: 46,
+            employee: 101,
+            note: "PRINCE",
+            isPublished: true,
+            isOpen: false,
+            confirmationStatus: "ROSTER_CONFIRMATION_NOT_REQUIRED",
+            areaName: "Live in",
+            location: 8,
+            locationName: "Westfield"
+          },
+          {
+            id: 53898,
+            start: "2026-07-25T08:00:00+01:00",
+            end: "2026-07-25T22:00:00+01:00",
+            mealbreakDuration: 0,
+            mealbreakSlots: [],
+            duration: 14,
+            cost: 0,
+            area: 46,
+            employee: 101,
+            note: "PRINCE",
+            isPublished: true,
+            isOpen: false,
+            confirmationStatus: "ROSTER_CONFIRMATION_NOT_REQUIRED",
+            areaName: "Live in",
+            location: 8,
+            locationName: "Westfield"
+          },
+          {
+            id: 53899,
+            start: "2026-07-29T08:00:00+01:00",
+            end: "2026-07-29T22:00:00+01:00",
+            mealbreakDuration: 0,
+            mealbreakSlots: [],
+            duration: 14,
+            cost: 0,
+            area: 46,
+            employee: 101,
+            note: "PRINCE",
+            isPublished: true,
+            isOpen: false,
+            confirmationStatus: "ROSTER_CONFIRMATION_NOT_REQUIRED",
+            areaName: "Live in",
+            location: 8,
+            locationName: "Westfield"
+          },
+          // Another employee shift for testing filter
+          {
+            id: 53900,
+            start: "2026-07-09T09:00:00+01:00",
+            end: "2026-07-09T17:00:00+01:00",
+            mealbreakDuration: 30,
+            mealbreakSlots: [],
+            duration: 7.5,
+            cost: 0,
+            area: 47,
+            employee: 102,
+            note: "SARAH",
+            isPublished: true,
+            isOpen: false,
+            confirmationStatus: "ROSTER_CONFIRMATION_NOT_REQUIRED",
+            areaName: "Day Duty",
+            location: 8,
+            locationName: "Westfield"
+          }
         ]
       }
     };
 
     processAndRenderResponse(demoPayload);
-    showToast('Loaded demo shifts for July 2026. Ready to export to Excel!', 'info');
+    showToast('Loaded demo shifts matching Deputy payload structure. Filtered for Employee #101.', 'info');
   }
 
   // --- Start App on DOM Ready ---

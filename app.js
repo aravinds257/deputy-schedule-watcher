@@ -12,7 +12,8 @@
     TOKEN: 'deputy_bearer_token',
     CORS_PROXY: 'deputy_use_cors_proxy',
     CUSTOM_PROXY: 'deputy_custom_proxy_url',
-    PROFILE: 'deputy_cached_profile'
+    PROFILE: 'deputy_cached_profile',
+    EMAIL: 'deputy_user_email'
   };
 
   const DEFAULT_PROXY = 'https://corsproxy.io/?url=';
@@ -36,14 +37,31 @@
 
   // --- DOM Elements ---
   const elements = {
-    // Auth & Config
+    // Auth Tabs & Forms
+    tabBtnLogin: document.getElementById('tab-btn-login'),
+    tabBtnToken: document.getElementById('tab-btn-token'),
+    tabBtnSession: document.getElementById('tab-btn-session'),
+    loginAuthForm: document.getElementById('login-auth-form'),
+    tokenAuthForm: document.getElementById('token-auth-form'),
+    sessionHelperView: document.getElementById('session-helper-view'),
+
+    // Login Form Inputs
+    loginInstance: document.getElementById('login-instance'),
+    loginEmail: document.getElementById('login-email'),
+    loginPassword: document.getElementById('login-password'),
+    btnToggleLoginPass: document.getElementById('btn-toggle-login-pass'),
+    btnDoLogin: document.getElementById('btn-do-login'),
+
+    // Token Form Inputs
     deputyInstance: document.getElementById('deputy-instance'),
     bearerToken: document.getElementById('bearer-token'),
     btnToggleTokenVisibility: document.getElementById('btn-toggle-token-visibility'),
+    btnTestConnection: document.getElementById('btn-test-connection'),
+
+    // Proxy & Status
     corsProxyToggle: document.getElementById('cors-proxy-toggle'),
     customProxyWrap: document.getElementById('custom-proxy-wrap'),
     customProxyUrl: document.getElementById('custom-proxy-url'),
-    btnTestConnection: document.getElementById('btn-test-connection'),
     connectionStatusPill: document.getElementById('connection-status-pill'),
     userProfileCard: document.getElementById('user-profile-card'),
     userAvatarInitials: document.getElementById('user-avatar-initials'),
@@ -99,6 +117,12 @@
     if (savedInstance) {
       state.instance = savedInstance;
       elements.deputyInstance.value = savedInstance;
+      elements.loginInstance.value = savedInstance;
+    }
+
+    const savedEmail = localStorage.getItem(STORAGE_KEYS.EMAIL);
+    if (savedEmail) {
+      elements.loginEmail.value = savedEmail;
     }
 
     const savedToken = localStorage.getItem(STORAGE_KEYS.TOKEN);
@@ -132,7 +156,9 @@
   }
 
   function saveSettings() {
-    localStorage.setItem(STORAGE_KEYS.INSTANCE, elements.deputyInstance.value.trim());
+    const inst = (elements.loginInstance.value || elements.deputyInstance.value || '').trim();
+    localStorage.setItem(STORAGE_KEYS.INSTANCE, inst);
+    localStorage.setItem(STORAGE_KEYS.EMAIL, elements.loginEmail.value.trim());
     localStorage.setItem(STORAGE_KEYS.TOKEN, elements.bearerToken.value.trim());
     localStorage.setItem(STORAGE_KEYS.CORS_PROXY, elements.corsProxyToggle.checked);
     localStorage.setItem(STORAGE_KEYS.CUSTOM_PROXY, elements.customProxyUrl.value.trim());
@@ -140,11 +166,27 @@
 
   // --- UI Event Handlers ---
   function bindEvents() {
+    // Auth Tab Switching
+    elements.tabBtnLogin.addEventListener('click', () => switchAuthTab('login'));
+    elements.tabBtnToken.addEventListener('click', () => switchAuthTab('token'));
+    elements.tabBtnSession.addEventListener('click', () => switchAuthTab('session'));
+
+    // Sync instance inputs
+    elements.loginInstance.addEventListener('input', () => {
+      elements.deputyInstance.value = elements.loginInstance.value;
+      state.instance = elements.loginInstance.value.trim();
+      saveSettings();
+      updateModalLinks();
+    });
+
     elements.deputyInstance.addEventListener('input', () => {
+      elements.loginInstance.value = elements.deputyInstance.value;
       state.instance = elements.deputyInstance.value.trim();
       saveSettings();
       updateModalLinks();
     });
+
+    elements.loginEmail.addEventListener('input', saveSettings);
 
     elements.bearerToken.addEventListener('input', () => {
       state.token = elements.bearerToken.value.trim();
@@ -156,21 +198,43 @@
       saveSettings();
     });
 
-    elements.btnToggleTokenVisibility.addEventListener('click', () => {
-      const isPassword = elements.bearerToken.type === 'password';
-      elements.bearerToken.type = isPassword ? 'text' : 'password';
-      elements.btnToggleTokenVisibility.style.color = isPassword ? 'var(--brand-primary)' : 'var(--text-tertiary)';
+    // Password visibility toggles
+    elements.btnToggleLoginPass.addEventListener('click', () => {
+      const isPass = elements.loginPassword.type === 'password';
+      elements.loginPassword.type = isPass ? 'text' : 'password';
+      elements.btnToggleLoginPass.style.color = isPass ? 'var(--brand-primary)' : 'var(--text-tertiary)';
     });
 
+    elements.btnToggleTokenVisibility.addEventListener('click', () => {
+      const isPass = elements.bearerToken.type === 'password';
+      elements.bearerToken.type = isPass ? 'text' : 'password';
+      elements.btnToggleTokenVisibility.style.color = isPass ? 'var(--brand-primary)' : 'var(--text-tertiary)';
+    });
+
+    // Login Action
+    elements.btnDoLogin.addEventListener('click', () => handleDeputyLogin());
+
+    // Test Connection Button
     elements.btnTestConnection.addEventListener('click', () => testConnection());
+
+    // Fetch Shifts Button
     elements.btnFetchShifts.addEventListener('click', () => fetchShiftsFromApi());
+
+    // Import JSON Manual
     elements.btnImportJson.addEventListener('click', () => handleManualJsonImport());
+
+    // Demo Mode Button
     elements.btnDemoMode.addEventListener('click', () => loadDemoData());
+
+    // Export Buttons
     elements.btnExportExcel.addEventListener('click', () => exportToExcel());
     elements.btnExportCsv.addEventListener('click', () => exportToCsv());
+
+    // Filters & Search
     elements.tableSearch.addEventListener('input', () => applyTableFilters());
     elements.memberFilterSelect.addEventListener('change', () => applyTableFilters());
 
+    // Date Presets
     elements.presetButtons.forEach(btn => {
       btn.addEventListener('click', () => {
         elements.presetButtons.forEach(b => b.classList.remove('active'));
@@ -179,6 +243,7 @@
       });
     });
 
+    // Table Header Sorting
     elements.shiftsTable.querySelectorAll('th[data-sort]').forEach(th => {
       th.addEventListener('click', () => {
         const col = th.dataset.sort;
@@ -192,20 +257,32 @@
       });
     });
 
+    // Modal
     const openModal = () => elements.modalTokenGuide.style.display = 'flex';
     const closeModal = () => elements.modalTokenGuide.style.display = 'none';
 
     elements.btnTokenGuide.addEventListener('click', openModal);
-    elements.linkHowToken.addEventListener('click', (e) => {
-      e.preventDefault();
-      openModal();
-    });
+    if (elements.linkHowToken) {
+      elements.linkHowToken.addEventListener('click', (e) => {
+        e.preventDefault();
+        openModal();
+      });
+    }
     elements.btnCloseTokenModal.addEventListener('click', closeModal);
     elements.btnUnderstandToken.addEventListener('click', closeModal);
-
     elements.modalTokenGuide.addEventListener('click', (e) => {
       if (e.target === elements.modalTokenGuide) closeModal();
     });
+  }
+
+  function switchAuthTab(tab) {
+    elements.tabBtnLogin.classList.toggle('active', tab === 'login');
+    elements.tabBtnToken.classList.toggle('active', tab === 'token');
+    elements.tabBtnSession.classList.toggle('active', tab === 'session');
+
+    elements.loginAuthForm.style.display = tab === 'login' ? 'flex' : 'none';
+    elements.tokenAuthForm.style.display = tab === 'token' ? 'flex' : 'none';
+    elements.sessionHelperView.style.display = tab === 'session' ? 'block' : 'none';
   }
 
   function updateModalLinks() {
@@ -225,7 +302,7 @@
 
     setTimeout(() => {
       elements.toast.style.display = 'none';
-    }, 4000);
+    }, 4500);
   }
 
   // --- Date Presets ---
@@ -265,21 +342,23 @@
   }
 
   // --- API Client Layer ---
-  function buildApiUrl(endpointPath) {
-    const rawInstance = cleanInstanceUrl(elements.deputyInstance.value || state.instance);
-    const targetUrl = `https://${rawInstance}${endpointPath}`;
-
+  function buildApiUrl(targetFullUrl) {
     if (elements.corsProxyToggle.checked) {
       const proxyBase = elements.customProxyUrl.value.trim() || DEFAULT_PROXY;
-      return `${proxyBase}${encodeURIComponent(targetUrl)}`;
+      return `${proxyBase}${encodeURIComponent(targetFullUrl)}`;
     }
-    return targetUrl;
+    return targetFullUrl;
+  }
+
+  function getBaseInstanceUrl() {
+    const raw = elements.loginInstance.value || elements.deputyInstance.value || state.instance;
+    return `https://${cleanInstanceUrl(raw)}`;
   }
 
   async function callDeputyApi(endpointPath, options = {}) {
     const token = elements.bearerToken.value.trim();
     if (!token) {
-      throw new Error('Please enter your Deputy Bearer Token first.');
+      throw new Error('Please enter or fetch your Deputy Bearer Token first.');
     }
 
     const headers = {
@@ -289,7 +368,8 @@
       ...(options.headers || {})
     };
 
-    const url = buildApiUrl(endpointPath);
+    const targetUrl = `${getBaseInstanceUrl()}${endpointPath}`;
+    const url = buildApiUrl(targetUrl);
 
     const response = await fetch(url, {
       ...options,
@@ -297,17 +377,116 @@
     });
 
     if (!response.ok) {
-      let errorDetails = `HTTP Error ${response.status}: ${response.statusText}`;
+      let errorDetails = `HTTP ${response.status}: ${response.statusText}`;
       try {
         const errorJson = await response.json();
-        if (errorJson.error || errorJson.message) {
-          errorDetails += ` - ${errorJson.error || errorJson.message}`;
+        if (errorJson.error || errorJson.message || errorJson.error_description) {
+          errorDetails += ` - ${errorJson.error || errorJson.message || errorJson.error_description}`;
         }
       } catch (_) {}
       throw new Error(errorDetails);
     }
 
     return await response.json();
+  }
+
+  // --- Deputy Login Handler (Email & Password) ---
+  async function handleDeputyLogin() {
+    const username = elements.loginEmail.value.trim();
+    const password = elements.loginPassword.value;
+    const instance = cleanInstanceUrl(elements.loginInstance.value.trim() || state.instance);
+
+    if (!username || !password) {
+      showToast('Please enter your Deputy email and password.', 'error');
+      return;
+    }
+
+    const origText = elements.btnDoLogin.innerHTML;
+    elements.btnDoLogin.disabled = true;
+    elements.btnDoLogin.innerHTML = 'Signing in to Deputy...';
+
+    try {
+      saveSettings();
+
+      // Candidate login endpoints to test
+      const loginAttempts = [
+        // 1. Deputy Once API JSON login
+        {
+          url: 'https://once.deputy.com/api/v1/auth/login',
+          options: {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ username, password })
+          }
+        },
+        // 2. Deputy Instance Auth login
+        {
+          url: `https://${instance}/api/v1/auth/login`,
+          options: {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ username, password })
+          }
+        },
+        // 3. Deputy Instance Form-encoded login
+        {
+          url: `https://${instance}/exec/login`,
+          options: {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
+            body: new URLSearchParams({ username, password, login_instance: instance }).toString()
+          }
+        }
+      ];
+
+      let foundToken = null;
+      let lastError = null;
+
+      for (const attempt of loginAttempts) {
+        try {
+          const proxiedUrl = buildApiUrl(attempt.url);
+          const resp = await fetch(proxiedUrl, attempt.options);
+          
+          if (resp.ok) {
+            const data = await resp.json().catch(() => null);
+            if (data) {
+              foundToken = data.access_token ||
+                           data.token ||
+                           data.dp_token ||
+                           (data.data && (data.data.access_token || data.data.token)) ||
+                           (data.result && (data.result.token || data.result.access_token));
+              
+              if (foundToken) break;
+            }
+          }
+        } catch (e) {
+          lastError = e;
+        }
+      }
+
+      if (foundToken) {
+        state.token = foundToken;
+        elements.bearerToken.value = foundToken;
+        saveSettings();
+        showToast('Login successful! Token acquired.', 'success');
+
+        // Test Profile
+        await testConnection();
+      } else {
+        // Direct login endpoints might require interactive MFA or browser session cookie
+        throw new Error(
+          'Deputy requires browser session or MFA. You can quickly copy your Bearer Token directly from your logged-in Deputy tab (see "Active Browser Tab" tab).'
+        );
+      }
+    } catch (err) {
+      console.error('Login attempt failed:', err);
+      showToast(err.message, 'error');
+      // Switch to session helper tab to assist user
+      switchAuthTab('session');
+    } finally {
+      elements.btnDoLogin.disabled = false;
+      elements.btnDoLogin.innerHTML = origText;
+    }
   }
 
   // --- Connection & Profile Testing ---
@@ -326,7 +505,6 @@
       setConnectionStatus(true);
       showToast(`Connected as ${getDisplayName(userProfile)}`, 'success');
 
-      // Re-filter shifts if already loaded
       if (state.shifts.length > 0) {
         populateMemberFilterDropdown();
         applyTableFilters();
@@ -403,7 +581,6 @@
         }
       };
 
-      // 1. Ensure profile is retrieved to know requester's Employee ID & Name
       if (!state.currentUser) {
         try {
           const profile = await callDeputyApi('/api/v1/me');
@@ -415,7 +592,6 @@
         }
       }
 
-      // 2. Call Shifts Search Endpoint: /api/schedule/v2/me/shifts:search
       const responseData = await callDeputyApi('/api/schedule/v2/me/shifts:search', {
         method: 'POST',
         body: JSON.stringify(payload)
@@ -473,10 +649,8 @@
     state.locationsMap.clear();
     state.rolesMap.clear();
 
-    // Extract metadata if available
     const metadata = data.metadata || (data.data && data.data.metadata) || {};
     
-    // Member / Employee metadata mapping
     const memberSources = [
       metadata.employees,
       metadata.members,
@@ -498,7 +672,6 @@
       }
     });
 
-    // Locations / Operational Units metadata
     const locationSources = [
       metadata.locations,
       metadata.operationalUnits,
@@ -517,7 +690,6 @@
       }
     });
 
-    // Areas / Roles metadata
     const roleSources = [
       metadata.areas,
       metadata.roles,
@@ -536,7 +708,6 @@
       }
     });
 
-    // Extract raw shifts array (handling all Deputy API response wrappers)
     let rawShifts = [];
     if (Array.isArray(data)) {
       rawShifts = data;
@@ -549,11 +720,9 @@
     } else if (data.response && Array.isArray(data.response)) {
       rawShifts = data.response;
     } else if (data.id && data.start && data.end) {
-      // Single shift object passed
       rawShifts = [data];
     }
 
-    // If current authenticated user is known, ensure their ID is mapped
     if (state.currentUser) {
       ['Id', 'id', 'Employee', 'employee', 'EmployeeId', 'employeeId', 'UserId', 'userId'].forEach(key => {
         if (state.currentUser[key]) {
@@ -562,27 +731,20 @@
       });
     }
 
-    // Normalize each shift
     state.shifts = rawShifts.map(s => normalizeShift(s));
 
-    // Populate dropdown with all unique employees detected
     populateMemberFilterDropdown();
-
     applyTableFilters();
   }
 
   function normalizeShift(raw) {
-    // Start & End Timestamps
     const startStr = raw.start || raw.startTime || raw.intStart || raw.Start || raw.StartTime;
     const endStr = raw.end || raw.endTime || raw.intEnd || raw.End || raw.EndTime;
 
     const startDate = parseDeputyDate(startStr);
     const endDate = parseDeputyDate(endStr);
 
-    // Employee / Member ID Resolution (Field is `employee` or `memberId` in Deputy API)
     const employeeId = String(raw.employee ?? raw.memberId ?? raw.employeeId ?? raw.userId ?? raw.member ?? '');
-
-    // Note / Employee Name detection
     const noteText = raw.note || raw.notes || raw.comment || raw.strComment || '';
 
     let memberName = raw.memberName || raw.employeeName || state.membersMap.get(employeeId);
@@ -603,10 +765,8 @@
       }
     }
 
-    // If still no memberName, check note or fallback
     if (!memberName) {
       if (noteText && noteText.trim().length > 0 && noteText.trim().length <= 25 && !noteText.includes('\n')) {
-        // Frequently Deputy shifts assign the employee name in `note` (e.g. "PRINCE")
         memberName = noteText.trim();
       } else if (employeeId) {
         memberName = `Employee #${employeeId}`;
@@ -615,12 +775,10 @@
       }
     }
 
-    // If we now have a resolved name for this employeeId, save to map
     if (employeeId && memberName && !state.membersMap.has(employeeId)) {
       state.membersMap.set(employeeId, memberName);
     }
 
-    // Meal Break Duration (in minutes)
     let mealBreakMins = 0;
     if (raw.mealbreakDuration !== undefined && raw.mealbreakDuration !== null) {
       mealBreakMins = Number(raw.mealbreakDuration);
@@ -640,7 +798,6 @@
       }, 0);
     }
 
-    // Total Hours Calculation
     let totalHours = 0;
     if (startDate && endDate) {
       const diffMs = endDate.getTime() - startDate.getTime();
@@ -649,20 +806,15 @@
       totalHours = Math.max(0, diffHours - breakHours);
     } else if (raw.duration !== undefined && raw.duration !== null) {
       const d = parseFloat(raw.duration);
-      // In Deputy V2 Shifts API, duration is in HOURS (e.g. 14).
-      // Only divide by 3600 if value is large (> 100, which means seconds).
       totalHours = d > 100 ? (d / 3600) : d;
     }
 
-    // Role / Area (Field in Deputy is `areaName` or `area`)
     const areaId = String(raw.area ?? raw.roleId ?? raw.role ?? '');
     const roleName = raw.areaName || raw.roleName || raw.positionName || state.rolesMap.get(areaId) || (areaId ? `Area #${areaId}` : 'Shift');
 
-    // Location (Field in Deputy is `locationName` or `location`)
     const locationId = String(raw.location ?? raw.operationalUnitId ?? raw.companyId ?? '');
     const locationName = raw.locationName || raw.operationalUnitName || raw.companyName || state.locationsMap.get(locationId) || (locationId ? `Location #${locationId}` : 'Main Site');
 
-    // Status & Confirmation
     let statusLabel = 'Confirmed';
     let statusClass = 'badge-confirmed';
 
@@ -746,7 +898,6 @@
     const searchTerm = elements.tableSearch.value.toLowerCase().trim();
     const memberFilter = elements.memberFilterSelect.value;
 
-    // Collect all valid IDs and display names for current user
     const currentUserKeys = [];
     if (state.currentUser) {
       ['Employee', 'EmployeeId', 'employee', 'employeeId', 'Id', 'id', 'UserId', 'userId', 'memberId'].forEach(k => {
@@ -757,7 +908,6 @@
     }
 
     state.filteredShifts = state.shifts.filter(shift => {
-      // 1. Employee / Member Filter
       if (memberFilter === 'auto') {
         if (currentUserKeys.length > 0) {
           const shiftEmp = String(shift.employeeId || shift.memberId || shift.raw?.employee || '');
@@ -771,7 +921,6 @@
           }
 
           if (!matchesId && !matchesName) {
-            // If shift does not match the active requester's ID or name, filter it out
             return false;
           }
         }
@@ -783,7 +932,6 @@
         }
       }
 
-      // 2. Search Term Filter
       if (searchTerm) {
         const matchString = `${shift.memberName} ${shift.roleName} ${shift.locationName} ${shift.status} ${shift.notes}`.toLowerCase();
         if (!matchString.includes(searchTerm)) {
@@ -846,7 +994,7 @@
             <div class="empty-state">
               <div class="empty-icon">🔍</div>
               <h3>${totalRaw > 0 ? 'No shifts match current filter' : 'No schedule data loaded'}</h3>
-              <p>${totalRaw > 0 ? 'Try changing the "Filter by Member" dropdown to "All Shifts" or adjusting your search term.' : 'Click "Fetch Schedules from Deputy" or "Load Demo Data" to get started.'}</p>
+              <p>${totalRaw > 0 ? 'Try changing the "Filter by Employee" dropdown to "All Shifts" or adjusting your search term.' : 'Sign in or enter token, then click "Fetch Schedules from Deputy".'}</p>
             </div>
           </td>
         </tr>
@@ -1047,7 +1195,6 @@
     displayUserProfile(state.currentUser);
     setConnectionStatus(true);
 
-    // Realistic shifts matching the Deputy API response structure provided
     const demoPayload = {
       metadata: {
         employees: [
@@ -1209,7 +1356,6 @@
             location: 8,
             locationName: "Westfield"
           },
-          // Another employee shift for testing filter
           {
             id: 53900,
             start: "2026-07-09T09:00:00+01:00",
